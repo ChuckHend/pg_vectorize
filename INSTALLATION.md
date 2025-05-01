@@ -21,7 +21,7 @@ cargo pgrx init --pg17 $(which pg_config)
 ```bash
 git clone https://github.com/ChuckHend/pg_vectorize.git
 
-cd extension
+cd pg_vectorize/extension
 
 # install dependencies
 make setup PGRX_PG_CONFIG=$(which pg_config)
