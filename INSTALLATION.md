@@ -52,5 +52,5 @@ ALTER SYSTEM SET shared_preload_libraries TO 'pg_cron', 'vectorize';
 connect to your Postgres instance with something like `psql -U postgres`. Then, run:
 
 ```sql
-CREATE EXTENSION vectorize cascade;
+CREATE EXTENSION vectorize CASCADE;
 ```
