@@ -8,7 +8,7 @@ To install the pg_vectorize extension into an Postgres installation, run the fol
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-2. Install pgrx
+2. Install [pgrx](https://github.com/pgcentralfoundation/pgrx)
 
 ```bash
 cargo install cargo-pgrx --version 0.13.1 --locked
@@ -16,7 +16,7 @@ cargo install cargo-pgrx --version 0.13.1 --locked
 cargo pgrx init --pg17 $(which pg_config)
 ```
 
-3. Clone the repo and compile + install the extension:
+3. Clone the repo and install dependencies
 
 ```bash
 git clone https://github.com/ChuckHend/pg_vectorize.git
