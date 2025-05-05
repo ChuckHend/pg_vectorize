@@ -18,6 +18,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  packages: write
 
 defaults:
   run:
@@ -47,11 +48,7 @@ jobs:
 
   build_and_push_amd64:
     name: Build and push AMD64 images
-    runs-on:
-      - "runs-on=${{ github.run_id }}-build-push-amd64"
-      - "runner=large-amd64"
-      - "cpu=8"
-      - "ram=16"
+    runs-on: ubuntu-latest
     outputs:
       short_sha: ${{ steps.versions.outputs.SHORT_SHA }}
     steps:
@@ -64,27 +61,27 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Quay
+      - name: Login to GHCR
         uses: docker/login-action@v2
         with:
-          registry: quay.io/tembo
-          username: ${{ secrets.QUAY_USER_TEMBO }}
-          password: ${{ secrets.QUAY_PASSWORD_TEMBO }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push -- Commit
         run: |
             docker build \
                 -f ./vector-serve/Dockerfile \
-                -t quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-amd64 .
-            docker push quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-amd64
+                -t ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-amd64 .
+            docker push ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-amd64
 
       - name: Build and push -- Release
         if: github.ref == 'refs/heads/main'
         run: |
             docker build \
                 -f ./vector-serve/Dockerfile \
-                -t quay.io/tembo/vector-serve:latest-amd64 .
-            docker push quay.io/tembo/vector-serve:latest-amd64
+                -t ghcr.io/chuckhend/vector-serve:latest-amd64 .
+            docker push ghcr.io/chuckhend/vector-serve:latest-amd64
 
       - name: ECR Build and push -- Commit
         uses: aws-actions/configure-aws-credentials@v4
@@ -112,11 +109,7 @@ jobs:
 
   build_and_push_arm64:
     name: Build and push ARM64 images
-    runs-on:
-      - "runs-on=${{ github.run_id }}-build-push-arm64"
-      - "runner=large-arm64"
-      - "cpu=8"
-      - "ram=16"
+    runs-on: ubicloud-standard-2-arm-ubuntu-2204
     outputs:
       short_sha: ${{ steps.versions.outputs.SHORT_SHA }}
     steps:
@@ -130,20 +123,20 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Quay
+      - name: Login to GHCR
         uses: docker/login-action@v2
         with:
-          registry: quay.io/tembo
-          username: ${{ secrets.QUAY_USER_TEMBO }}
-          password: ${{ secrets.QUAY_PASSWORD_TEMBO }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push -- Commit
         run: |
             docker build \
                 -f ./vector-serve/Dockerfile \
                 --platform linux/arm64 \
-                -t quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-arm64 .
-            docker push quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-arm64
+                -t ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-arm64 .
+            docker push ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-arm64
 
       - name: Build and push -- Release
         if: github.ref == 'refs/heads/main'
@@ -151,12 +144,11 @@ jobs:
             docker build \
                 -f ./vector-serve/Dockerfile \
                 --platform linux/arm64 \
-                -t quay.io/tembo/vector-serve:latest-arm64 .
-            docker push quay.io/tembo/vector-serve:latest-arm64
+                -t ghcr.io/chuckhend/vector-serve:latest-arm64 .
+            docker push ghcr.io/chuckhend/vector-serve:latest-arm64
 
   create_manifest:
     name: Create and Push Manifest
-
     runs-on: ubuntu-latest
     needs: [build_and_push_arm64, build_and_push_amd64]
     outputs:
@@ -166,12 +158,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Login to Quay
+      - name: Login to GHCR
         uses: docker/login-action@v2
         with:
-          registry: quay.io/tembo
-          username: ${{ secrets.QUAY_USER_TEMBO }}
-          password: ${{ secrets.QUAY_PASSWORD_TEMBO }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -183,23 +175,23 @@ jobs:
       - name: Create and push Docker manifest -- Commit
         run: |
           docker manifest create \
-            quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }} \
-            quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-arm64 \
-            quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-amd64
+            ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }} \
+            ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-arm64 \
+            ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-amd64
 
-          docker manifest annotate quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }} quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-arm64 --arch arm64 --os linux
-          docker manifest annotate quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }} quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-amd64 --arch amd64 --os linux
-          docker manifest push quay.io/tembo/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}
+          docker manifest annotate ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }} ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-arm64 --arch arm64 --os linux
+          docker manifest annotate ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }} ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-amd64 --arch amd64 --os linux
+          docker manifest push ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}
 
       - name: Create and push Docker manifest -- latest (main)
         # only push latest off main
         if: github.ref == 'refs/heads/main'
         run: |
           docker manifest create \
-            quay.io/tembo/vector-serve:latest \
-            quay.io/tembo/vector-serve:latest-arm64 \
-            quay.io/tembo/vector-serve:latest-amd64
+            ghcr.io/chuckhend/vector-serve:latest \
+            ghcr.io/chuckhend/vector-serve:latest-arm64 \
+            ghcr.io/chuckhend/vector-serve:latest-amd64
         
-          docker manifest annotate quay.io/tembo/vector-serve:latest quay.io/tembo/vector-serve:latest-arm64 --arch arm64 --os linux
-          docker manifest annotate quay.io/tembo/vector-serve:latest quay.io/tembo/vector-serve:latest-amd64 --arch amd64 --os linux
-          docker manifest push quay.io/tembo/vector-serve:latest
+          docker manifest annotate ghcr.io/chuckhend/vector-serve:latest ghcr.io/chuckhend/vector-serve:latest-arm64 --arch arm64 --os linux
+          docker manifest annotate ghcr.io/chuckhend/vector-serve:latest ghcr.io/chuckhend/vector-serve:latest-amd64 --arch amd64 --os linux
+          docker manifest push ghcr.io/chuckhend/vector-serve:latest
