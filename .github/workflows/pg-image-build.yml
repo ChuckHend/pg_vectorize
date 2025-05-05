@@ -15,6 +15,7 @@ on:
   push:
     branches:
       - main
+      - ghcr
     paths:
       - "extension/**"
       - "images/vectorize-pg/**"
@@ -25,12 +26,9 @@ on:
 jobs:
   build_and_push_amd64:
     name: Build and push AMD64 images
-    if: github.repository_owner == 'tembo-io'
+    if: github.repository_owner == 'ChuckHend'
     runs-on:
-      - "runs-on=${{ github.run_id }}-build-push-amd64"
-      - "runner=large-amd64"
-      - "cpu=8"
-      - "ram=16"
+      - ubuntu-latest
     outputs:
       short_sha: ${{ steps.versions.outputs.SHORT_SHA }}
     steps:
@@ -57,12 +55,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Quay
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
         with:
-          registry: quay.io/tembo
-          username: ${{ secrets.QUAY_USER_TEMBO }}
-          password: ${{ secrets.QUAY_PASSWORD_TEMBO }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build and push -- Commit
         # push commit build when not a release
         if: github.event_name != 'release'
@@ -70,8 +69,8 @@ jobs:
             docker build \
                 --build-arg PGRX_VER=${{ steps.versions.outputs.PGRX_VER }} \
                 -f ./images/vectorize-pg/Dockerfile \
-                -t quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-amd64 .
-            docker push quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-amd64
+                -t ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-amd64 .
+            docker push ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-amd64
 
       - name: Build and push -- Release
         if: github.event_name == 'release'
@@ -79,19 +78,16 @@ jobs:
             docker build \
                 --build-arg PGRX_VER=${{ steps.versions.outputs.PGRX_VER }} \
                 -f ./images/vectorize-pg/Dockerfile \
-                -t quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-amd64 \
-                -t quay.io/tembo/vectorize-pg:latest-amd64 .
-            docker push  quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-amd64
-            docker push  quay.io/tembo/vectorize-pg:latest-amd64
+                -t ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-amd64 \
+                -t ghcr.io/chuckhend/vectorize-pg:latest-amd64 .
+            docker push ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-amd64
+            docker push ghcr.io/chuckhend/vectorize-pg:latest-amd64
 
   build_and_push_arm64:
     name: Build and push ARM64 images
-    if: github.repository_owner == 'tembo-io'
+    if: github.repository_owner == 'ChuckHend'
     runs-on:
-      - "runs-on=${{ github.run_id }}-build-push-arm64"
-      - "runner=large-arm64"
-      - "cpu=8"
-      - "ram=16"
+      - ubuntu-latest
     outputs:
       short_sha: ${{ steps.versions.outputs.SHORT_SHA }}
     steps:
@@ -121,12 +117,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Quay
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
         with:
-          registry: quay.io/tembo
-          username: ${{ secrets.QUAY_USER_TEMBO }}
-          password: ${{ secrets.QUAY_PASSWORD_TEMBO }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push -- Commit
         # push commit build when not a release
@@ -136,8 +132,8 @@ jobs:
                 --build-arg PGRX_VER=${{ steps.versions.outputs.PGRX_VER }} \
                 -f ./images/vectorize-pg/Dockerfile \
                 --platform linux/arm64 \
-                -t quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-arm64 .
-            docker push quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-arm64
+                -t ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-arm64 .
+            docker push ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-arm64
 
       - name: Build and push -- Release
         if: github.event_name == 'release'
@@ -146,14 +142,13 @@ jobs:
                 --build-arg PGRX_VER=${{ steps.versions.outputs.PGRX_VER }} \
                 -f ./images/vectorize-pg/Dockerfile \
                 --platform linux/arm64 \
-                -t quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-arm64 \
-                -t quay.io/tembo/vectorize-pg:latest-arm64 .
-            docker push quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-arm64
-            docker push quay.io/tembo/vectorize-pg:latest-arm64
+                -t ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-arm64 \
+                -t ghcr.io/chuckhend/vectorize-pg:latest-arm64 .
+            docker push ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-arm64
+            docker push ghcr.io/chuckhend/vectorize-pg:latest-arm64
 
   create_manifest:
     name: Create and Push Manifest
-
     runs-on: ubuntu-latest
     needs: [build_and_push_arm64, build_and_push_amd64]
     outputs:
@@ -163,12 +158,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Quay
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
         with:
-          registry: quay.io/tembo
-          username: ${{ secrets.QUAY_USER_TEMBO }}
-          password: ${{ secrets.QUAY_PASSWORD_TEMBO }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -195,29 +190,29 @@ jobs:
       - name: Create and push Docker manifest -- Commit
         if: github.event_name != 'release'
         run: |
-          docker manifest create quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }} \
-            quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-arm64 \
-            quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-amd64
+          docker manifest create ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }} \
+            ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-arm64 \
+            ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-amd64
         
-          docker manifest annotate quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }} quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-arm64 --arch arm64 --os linux
-          docker manifest annotate quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }} quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-amd64 --arch amd64 --os linux
-          docker manifest push quay.io/tembo/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}
+          docker manifest annotate ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }} ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-arm64 --arch arm64 --os linux
+          docker manifest annotate ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }} ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}-amd64 --arch amd64 --os linux
+          docker manifest push ghcr.io/chuckhend/vectorize-pg:${{ steps.versions.outputs.SHORT_SHA }}
 
       - name: Create and push Docker manifest -- Release
         if: github.event_name == 'release'
         run: |
-          docker manifest create quay.io/tembo/vectorize-pg:latest \
-            quay.io/tembo/vectorize-pg:latest-arm64 \
-            quay.io/tembo/vectorize-pg:latest-amd64
+          docker manifest create ghcr.io/chuckhend/vectorize-pg:latest \
+            ghcr.io/chuckhend/vectorize-pg:latest-arm64 \
+            ghcr.io/chuckhend/vectorize-pg:latest-amd64
         
-          docker manifest annotate quay.io/tembo/vectorize-pg:latest quay.io/tembo/vectorize-pg:latest-arm64 --arch arm64 --os linux
-          docker manifest annotate quay.io/tembo/vectorize-pg:latest quay.io/tembo/vectorize-pg:latest-amd64 --arch amd64 --os linux
-          docker manifest push quay.io/tembo/vectorize-pg:latest
+          docker manifest annotate ghcr.io/chuckhend/vectorize-pg:latest ghcr.io/chuckhend/vectorize-pg:latest-arm64 --arch arm64 --os linux
+          docker manifest annotate ghcr.io/chuckhend/vectorize-pg:latest ghcr.io/chuckhend/vectorize-pg:latest-amd64 --arch amd64 --os linux
+          docker manifest push ghcr.io/chuckhend/vectorize-pg:latest
 
-          docker manifest create quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }} \
-            quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-arm64 \
-            quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-amd64
+          docker manifest create ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }} \
+            ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-arm64 \
+            ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-amd64
         
-          docker manifest annotate quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }} quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-arm64 --arch arm64 --os linux
-          docker manifest annotate quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }} quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-amd64 --arch amd64 --os linux
-          docker manifest push quay.io/tembo/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}
+          docker manifest annotate ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }} ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-arm64 --arch arm64 --os linux
+          docker manifest annotate ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }} ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}-amd64 --arch amd64 --os linux
+          docker manifest push ghcr.io/chuckhend/vectorize-pg:v${{ steps.versions.outputs.TAG_VER }}
