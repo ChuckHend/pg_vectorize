@@ -1,7 +1,7 @@
 services:
   postgres:
     restart: always
-    image: quay.io/tembo/vectorize-pg:latest
+    image: ghcr.io/chuckhend/vectorize-pg:latest
     ports:
       - 5432:5432
     environment:
