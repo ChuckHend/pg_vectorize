@@ -87,7 +87,7 @@ jobs:
     name: Build and push ARM64 images
     if: github.repository_owner == 'ChuckHend'
     runs-on:
-      - ubicloud-standard-2-ubuntu-2204
+      - ubicloud-standard-2-arm-ubuntu-2204
     outputs:
       short_sha: ${{ steps.versions.outputs.SHORT_SHA }}
     steps:
