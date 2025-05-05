@@ -19,7 +19,7 @@ jobs:
     runs-on:  ubuntu-24.04
     services:
       vector-serve:
-        image: quay.io/tembo/vector-serve:latest
+        image: ghcr.io/chuckhend/vector-serve:latest
         ports:
           - 3000:3000
     steps:

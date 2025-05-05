@@ -8,7 +8,7 @@ services:
       - POSTGRES_PASSWORD=postgres
   vector-serve:
     restart: always
-    image: quay.io/tembo/vector-serve:latest
+    image: ghcr.io/chuckhend/vector-serve:latest
     ports:
       - 3000:3000
   ollama-serve:

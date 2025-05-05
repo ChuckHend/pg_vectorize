@@ -25,7 +25,7 @@ cargo pgrx init
 ### 2. Set up Docker container
 
 ```bash
-docker run -d -p 3000:3000 quay.io/tembo/vector-serve:latest
+docker run -d -p 3000:3000 ghcr.io/chuckhend/vector-serve:latest
 ```
 
 Confirm a successful set up by running the following:
