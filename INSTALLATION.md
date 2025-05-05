@@ -1,6 +1,6 @@
 # Installing pg_vectorize
 
-To install the pg_vectorize extension into an Postgres installation, run the following on the same host as Postgres:
+To install the pg_vectorize extension into an existing Postgres cluster, run the following on the same host as Postgres:
 
 1. Install [Rust](https://www.rust-lang.org/tools/install)
 
