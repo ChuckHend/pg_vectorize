@@ -34,7 +34,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install stoml and pg-trunk
+      - name: Install stoml
         shell: bash
         run: |
           set -xe
@@ -96,7 +96,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Install stoml and pg-trunk
+      - name: Install stoml
         shell: bash
         run: |
           set -xe
@@ -170,7 +170,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Install stoml and pg-trunk
+      - name: Install stoml
         shell: bash
         run: |
           set -xe

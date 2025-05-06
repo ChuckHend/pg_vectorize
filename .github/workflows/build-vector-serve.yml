@@ -76,7 +76,7 @@ jobs:
             docker push ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-amd64
 
       - name: Build and push -- Release
-        # if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         run: |
             docker build \
                 -f ./vector-serve/Dockerfile \
@@ -115,7 +115,7 @@ jobs:
             docker push ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-arm64
 
       - name: Build and push -- Release
-        # if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         run: |
             docker build \
                 -f ./vector-serve/Dockerfile \
@@ -161,7 +161,7 @@ jobs:
 
       - name: Create and push Docker manifest -- latest (main)
         # only push latest off main
-        # if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         run: |
           docker manifest create \
             ghcr.io/chuckhend/vector-serve:latest \

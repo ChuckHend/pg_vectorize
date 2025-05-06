@@ -1,35 +1,20 @@
 <h1 align="center">
  <b>pg_vectorize: a VectorDB for Postgres</b>
-<br>
-
-<br/>
-  <a href="https://tembo.io"><img src="https://github.com/tembo-io/pg_vectorize/assets/15756360/34d65cba-065b-485f-84a4-76284e9def19" alt="pg_vectorize" width="368px"></a>
-
-<p align="center">
-  <div style="text-align: center;">
-    <a href="https://cloud.tembo.io/sign-up">
-      <img src="https://tembo.io/tryFreeButton.svg" alt="Tembo Cloud Try Free">
-    </a>
-  </div>
-</p>
-
 </h1>
 
 A Postgres extension that automates the transformation and orchestration of text to embeddings and provides hooks into the most popular LLMs. This allows you to do vector search and build LLM applications on existing data with as little as two function calls.
 
-This project relies heavily on the work by [pgvector](https://github.com/pgvector/pgvector) for vector similarity search, [pgmq](https://github.com/tembo-io/pgmq) for orchestration in background workers, and [SentenceTransformers](https://huggingface.co/sentence-transformers).
+This project relies heavily on the work by [pgvector](https://github.com/pgvector/pgvector) for vector similarity search, [pgmq](https://github.com/pgmq/pgmq) for orchestration in background workers, and [SentenceTransformers](https://huggingface.co/sentence-transformers).
 
 ---
 
-[![Static Badge](https://img.shields.io/badge/%40tembo-community?logo=slack&label=slack)](https://join.slack.com/t/tembocommunity/shared_invite/zt-277pu7chi-NHtvHWvLhHwyK0Y5Y6vTPw)
 [![PGXN version](https://badge.fury.io/pg/vectorize.svg)](https://pgxn.org/dist/vectorize/)
 [![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/3815)](https://ossrank.com/p/3815)
 
-pg_vectorize powers the [VectorDB Stack](https://tembo.io/docs/product/stacks/ai/vectordb) on [Tembo Cloud](https://cloud.tembo.io/) and is available in all hobby tier instances.
 
-**API Documentation**: https://tembo.io/pg_vectorize/
+**API Documentation**: https://chuckhend.github.io/pg_vectorize/
 
-**Source**: https://github.com/tembo-io/pg_vectorize
+**Source**: https://github.com/ChuckHend/pg_vectorize
 
 ## Features
 
@@ -51,7 +36,7 @@ pg_vectorize powers the [VectorDB Stack](https://tembo.io/docs/product/stacks/ai
 
 ## Installation
 
-The fastest way to get started is by running the Tembo docker container and the vector server with docker compose:
+The fastest way to get started is by using [docker compose](https://docs.docker.com/compose/).
 
 ```bash
 docker compose up -d
@@ -82,7 +67,7 @@ Rust:
 Postgres Extensions:
 
 - [pg_cron](https://github.com/citusdata/pg_cron) ^1.5
-- [pgmq](https://github.com/tembo-io/pgmq) ^1
+- [pgmq](https://github.com/pgmq/pgmq) ^1
 - [pgvector](https://github.com/pgvector/pgvector) ^0.5.0
 
 Then set the following either in postgresql.conf or as a configuration parameter:
@@ -106,7 +91,7 @@ SELECT pg_reload_conf();
 
 ## Vector Search Example
 
-Text-to-embedding transformation can be done with either Hugging Face's Sentence-Transformers or OpenAI's embeddings. The following examples use Hugging Face's Sentence-Transformers. See the project [documentation](https://tembo.io/pg_vectorize/examples/openai_embeddings/) for OpenAI examples.
+Text-to-embedding transformation can be done with either Hugging Face's Sentence-Transformers or OpenAI's embeddings. The following examples use Hugging Face's Sentence-Transformers. See the project [documentation](https://chuckhend.github.io/pg_vectorize/examples/openai_embeddings/) for OpenAI examples.
 
 Follow the [installation](#installation) steps if you haven't already.
 
@@ -336,9 +321,4 @@ The embeddings must match the dimensions of the specified transformer model. Thi
 
 ## Contributing
 
-We welcome contributions from the community! If you're interested in contributing to `pg_vectorize`, please check out our [Contributing Guide](CONTRIBUTING.md). Your contributions help make this project better for everyone.
-
-## Community Support
-
-If you encounter any issues or have any questions, feel free to join our [Tembo Community Slack](https://join.slack.com/t/tembocommunity/shared_invite/zt-2u3ctm86u-XzcyL76T7o~7Mpnt6KUx1g). We're here to help!
-
+We welcome contributions from the community! If you're interested in contributing to `pg_vectorize`, please check out our [Contributing Guide](CONTRIBUTING.md). You can also open an issue.

@@ -1,6 +1,6 @@
 SQLX_OFFLINE:=true
-DISTNAME = $(shell grep -m 1 '^name' Trunk.toml | sed -e 's/[^"]*"\([^"]*\)",\{0,1\}/\1/')
-DISTVERSION  = $(shell grep -m 1 '^version' Trunk.toml | sed -e 's/[^"]*"\([^"]*\)",\{0,1\}/\1/')
+DISTNAME = $(shell grep -m 1 '^name' Cargo.toml | sed -e 's/[^"]*"\([^"]*\)",\{0,1\}/\1/')
+DISTVERSION  = $(shell grep -m 1 '^version' Cargo.toml | sed -e 's/[^"]*"\([^"]*\)",\{0,1\}/\1/')
 PG_VERSION:=17
 DATABASE_URL:=postgres://${USER}:${USER}@localhost:288${PG_VERSION}/postgres
 PGRX_PG_CONFIG:=$(shell cargo pgrx info pg-config pg${PG_VERSION})
@@ -26,7 +26,7 @@ format:
 run:
 	SQLX_OFFLINE=${SQLX_OFFLINE} DATABASE_URL=${DATABASE_URL} cargo pgrx run pg${PG_VERSION} postgres
 
-META.json: META.json.in Trunk.toml
+META.json: META.json.in
 	@sed "s/@CARGO_VERSION@/$(DISTVERSION)/g" META.json.in > META.json
 
 # `git archive` only archives committed stuff, so use `git stash create` to
@@ -50,13 +50,6 @@ setup: setup.dependencies setup.shared_preload_libraries setup.urls
 cat-logs:
 	cat ~/.pgrx/${PG_VERSION}.log
 
-# install dependencies from trunk (limited OS/arch)
-trunk-dependencies:
-	trunk install pgvector --pg-config ${PGRX_PG_CONFIG}
-	trunk install pgmq --pg-config ${PGRX_PG_CONFIG}
-	trunk install pg_cron --pg-config ${PGRX_PG_CONFIG}
-	trunk install vectorscale --pg-config ${PGRX_PG_CONFIG}
-
 install-pg_cron:
 	git clone https://github.com/citusdata/pg_cron.git && \
 	cd pg_cron && \
@@ -74,7 +67,7 @@ install-pgvector:
 	cd .. && rm -rf pgvector
 
 install-pgmq:
-	git clone https://github.com/tembo-io/pgmq.git && \
+	git clone https://github.com/pgmq/pgmq.git && \
 	cd pgmq/pgmq-extension && \
 	PG_CONFIG=${PGRX_PG_CONFIG} make clean && \
 	PG_CONFIG=${PGRX_PG_CONFIG} make && \

@@ -73,7 +73,7 @@ jobs:
 
       - name: Test Core - Integration
         # skip when on external forks
-        if: github.repository_owner == 'tembo-io'
+        if: github.repository_owner == 'ChuckHend'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CO_API_KEY: ${{ secrets.CO_API_KEY }}
@@ -117,7 +117,7 @@ jobs:
           echo "\q" | make run
           make test-unit
       - name: integration-test
-        if: github.repository_owner == 'tembo-io'
+        if: github.repository_owner == 'ChuckHend'
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
           CO_API_KEY: ${{ secrets.CO_API_KEY }}
@@ -125,43 +125,3 @@ jobs:
           PORTKEY_VIRTUAL_KEY_OPENAI: ${{ secrets.PORTKEY_VIRTUAL_KEY_OPENAI }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
         run: make test-integration
-
-  publish:
-    if: github.event_name == 'release'
-    name: trunk publish
-    runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        pg-version: [14, 15, 16, 17]
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install Rust stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: "pg-vectorize-extension-test"
-          workspaces: pg-vectorize
-          # Additional directories to cache
-          cache-directories: /home/runner/.pgrx
-      - name: Install stoml and pg-trunk
-        shell: bash
-        run: |
-          set -xe
-          wget https://github.com/freshautomations/stoml/releases/download/v0.7.1/stoml_linux_amd64 &> /dev/null
-          mv stoml_linux_amd64 stoml
-          chmod +x stoml
-          sudo mv stoml /usr/local/bin/
-          cargo install pg-trunk
-      - name: trunk build
-        working-directory: ./extension
-        # trunk does not support path dependencies in Cargo.toml that are not within the current working directory
-        # therefore, we need to move the core crate into the extension directory for the build
-        run: |
-          mv ../core ./core
-          sed -i '0,/..\/core/s//.\/core/' Cargo.toml
-          ~/.cargo/bin/trunk build --pg-version ${{ matrix.pg-version }}
-      - name: trunk publish
-        working-directory: ./extension
-        env:
-          TRUNK_API_TOKEN: ${{ secrets.TRUNK_AUTH_TOKEN }}
-        run: ~/.cargo/bin/trunk publish
