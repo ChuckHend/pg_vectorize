@@ -1,7 +1,6 @@
 use log::{error, info};
 
 use vectorize_core::worker::base::{poll_job, Config};
-use vectorize_core::worker::ops::init_extension;
 
 #[tokio::main]
 async fn main() {
@@ -15,10 +14,6 @@ async fn main() {
         .connect(&cfg.database_url)
         .await
         .expect("unable to connect to postgres");
-
-    init_extension(&conn)
-        .await
-        .expect("unable to initialize extension");
 
     let queue = pgmq::PGMQueueExt::new_with_pool(conn.clone()).await;
 

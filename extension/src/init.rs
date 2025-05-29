@@ -1,11 +1,11 @@
-use crate::{guc, query::check_input, types};
+use crate::{guc, types};
 use pgrx::prelude::*;
 
 use anyhow::{anyhow, Context, Result};
 use vectorize_core::guc::VectorizeGuc;
+use vectorize_core::query::{self, check_input};
 use vectorize_core::types::IndexDist;
 use vectorize_core::types::{JobParams, TableMethod, VECTORIZE_SCHEMA};
-
 pub static VECTORIZE_QUEUE: &str = "vectorize_jobs";
 
 pub fn init_pgmq() -> Result<()> {
@@ -52,69 +52,13 @@ pub fn init_cron(cron: &str, job_name: &str) -> Result<Option<i64>, spi::Error> 
     Spi::get_one(&cronjob)
 }
 
-pub fn init_job_query() -> String {
-    format!(
-        "
-        INSERT INTO {schema}.job (name, index_dist_type, transformer, params)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (name) DO UPDATE SET
-            index_dist_type = EXCLUDED.index_dist_type,
-            params = job.params || EXCLUDED.params;
-        ",
-        schema = types::VECTORIZE_SCHEMA
-    )
-}
-
-fn drop_project_view(job_name: &str) -> String {
-    format!(
-        "DROP VIEW IF EXISTS vectorize.{job_name}_view;",
-        job_name = job_name
-    )
-}
-
-/// creates a project view over a source table and the embeddings table
-fn create_project_view(job_name: &str, job_params: &JobParams) -> String {
-    format!(
-        "CREATE VIEW vectorize.{job_name}_view as 
-        SELECT t0.*, t1.embeddings, t1.updated_at as embeddings_updated_at
-        FROM {schema}.{table} t0
-        INNER JOIN vectorize._embeddings_{job_name} t1
-            ON t0.{primary_key} = t1.{primary_key};
-        ",
-        job_name = job_name,
-        schema = job_params.schema,
-        table = job_params.relation,
-        primary_key = job_params.primary_key,
-    )
-}
-
-pub fn init_index_query(job_name: &str, idx_type: &str, job_params: &JobParams) -> String {
-    check_input(job_name).expect("invalid job name");
-    let src_schema = job_params.schema.clone();
-    let src_table = job_params.relation.clone();
-    match idx_type.to_uppercase().as_str() {
-        "GIN" | "GIST" => {} // Do nothing, it's valid
-        _ => panic!("Expected 'GIN' or 'GIST', got '{}' index type", idx_type),
-    }
-
-    format!(
-        "
-        CREATE INDEX IF NOT EXISTS {job_name}_idx on {schema}.{table} using {idx_type} (to_tsvector('english', {columns}));
-        ",
-        job_name = job_name,
-        schema = src_schema,
-        table = src_table,
-        columns = job_params.columns.join(" || ' ' || "),
-    )
-}
-
 pub fn init_embedding_table_query(
     job_name: &str,
     job_params: &JobParams,
     index_type: &IndexDist,
     model_dim: u32,
 ) -> Vec<String> {
-    check_input(job_name).expect("invalid job name");
+    query::check_input(job_name).expect("invalid job name");
     let src_schema = job_params.schema.clone();
     let src_table = job_params.relation.clone();
 
@@ -138,16 +82,16 @@ pub fn init_embedding_table_query(
 
     let index_stmt = match index_type {
         IndexDist::pgv_hnsw_cosine => {
-            create_hnsw_cosine_index(job_name, &index_schema, &table_name, &embeddings_col)
+            query::create_hnsw_cosine_index(job_name, &index_schema, &table_name, &embeddings_col)
         }
         IndexDist::vsc_diskann_cosine => {
             create_diskann_index(job_name, &index_schema, &table_name, &embeddings_col)
         }
         IndexDist::pgv_hnsw_ip => {
-            create_hnsw_ip_index(job_name, &index_schema, &table_name, &embeddings_col)
+            query::create_hnsw_ip_index(job_name, &index_schema, &table_name, &embeddings_col)
         }
         IndexDist::pgv_hnsw_l2 => {
-            create_hnsw_l2_index(job_name, &index_schema, &table_name, &embeddings_col)
+            query::create_hnsw_l2_index(job_name, &index_schema, &table_name, &embeddings_col)
         }
     };
 
@@ -160,7 +104,7 @@ pub fn init_embedding_table_query(
         }
         TableMethod::join => {
             let mut stmts = vec![
-                create_embedding_table(
+                query::create_embedding_table(
                     job_name,
                     &job_params.primary_key,
                     &job_params.pkey_type,
@@ -170,72 +114,22 @@ pub fn init_embedding_table_query(
                 ),
                 index_stmt,
                 // also create a view over the source table and the embedding table, for this project
-                drop_project_view(job_name),
-                create_project_view(job_name, job_params),
+                query::drop_project_view(job_name),
+                query::create_project_view(job_name, job_params),
             ];
 
             // Currently creating a GIN index within this function
             // TODO: Find a long term solution for this
             if let Some(indx_type_guc) = guc::get_guc(VectorizeGuc::TextIndexType) {
-                stmts.push(init_index_query(job_name, &indx_type_guc, job_params))
+                stmts.push(query::init_index_query(
+                    job_name,
+                    &indx_type_guc,
+                    job_params,
+                ))
             }
             stmts
         }
     }
-}
-
-fn create_embedding_table(
-    job_name: &str,
-    join_key: &str,
-    join_key_type: &str,
-    col_type: &str,
-    src_schema: &str,
-    src_table: &str,
-) -> String {
-    format!(
-        "CREATE TABLE IF NOT EXISTS vectorize._embeddings_{job_name} (
-            {join_key} {join_key_type} UNIQUE NOT NULL,
-            embeddings {col_type} NOT NULL,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
-            FOREIGN KEY ({join_key}) REFERENCES {src_schema}.{src_table} ({join_key}) ON DELETE CASCADE
-        );
-        ",
-        job_name = job_name,
-        join_key = join_key,
-        join_key_type = join_key_type,
-        col_type = col_type,
-        src_schema = src_schema,
-        src_table = src_table,
-    )
-}
-
-fn create_hnsw_l2_index(job_name: &str, schema: &str, table: &str, embedding_col: &str) -> String {
-    format!(
-        "CREATE INDEX IF NOT EXISTS {job_name}_hnsw_l2_idx ON {schema}.{table}
-        USING hnsw ({embedding_col} vector_l2_ops);
-        ",
-    )
-}
-
-fn create_hnsw_ip_index(job_name: &str, schema: &str, table: &str, embedding_col: &str) -> String {
-    format!(
-        "CREATE INDEX IF NOT EXISTS {job_name}_hnsw_ip_idx ON {schema}.{table}
-        USING hnsw ({embedding_col} vector_ip_ops);
-        ",
-    )
-}
-
-fn create_hnsw_cosine_index(
-    job_name: &str,
-    schema: &str,
-    table: &str,
-    embedding_col: &str,
-) -> String {
-    format!(
-        "CREATE INDEX IF NOT EXISTS {job_name}_hnsw_cos_idx ON {schema}.{table}
-        USING hnsw ({embedding_col} vector_cosine_ops);
-        ",
-    )
 }
 
 fn create_diskann_index(job_name: &str, schema: &str, table: &str, embedding_col: &str) -> String {

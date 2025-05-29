@@ -4,7 +4,6 @@ use vectorize_core::types::{
 };
 
 use serde::{Deserialize, Serialize};
-pub const VECTORIZE_SCHEMA: &str = "vectorize";
 
 #[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PostgresEnum, PartialEq, Eq)]

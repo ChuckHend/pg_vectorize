@@ -12,6 +12,7 @@ use pgrx::JsonB;
 use serde_json::Value;
 use std::collections::HashMap;
 use vectorize_core::guc::VectorizeGuc;
+use vectorize_core::query;
 use vectorize_core::transformers::providers::get_provider;
 use vectorize_core::transformers::providers::ollama::check_model_host;
 use vectorize_core::types::{self, Model, ModelSource, TableMethod, VectorizeMeta};
@@ -128,7 +129,7 @@ pub fn init_table(
         JsonB(serde_json::to_value(valid_params.clone()).expect("error serializing params"));
 
     // write job to table
-    let init_job_q = init::init_job_query();
+    let init_job_q = query::init_job_query();
     // using SPI here because it is unlikely that this code will be run anywhere but inside the extension.
     // background worker will likely be moved to an external container or service in near future
     let ran: Result<_, spi::Error> = Spi::connect_mut(|c| {

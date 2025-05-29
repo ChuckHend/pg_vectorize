@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT data_type\n        FROM information_schema.columns\n        WHERE\n            table_schema = $1\n            AND table_name = $2\n            AND column_name = $3    \n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "data_type",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Name",
+        "Name",
+        "Name"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "2fc618887954eee57adc9505363ad78c22c3c6c9f4605c59159a0a6f5d3c32d6"
+}

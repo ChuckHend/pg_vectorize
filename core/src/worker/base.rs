@@ -70,6 +70,7 @@ pub async fn poll_job(
     Ok(Some(()))
 }
 
+#[derive(Debug, Clone)]
 pub struct Config {
     pub database_url: String,
     pub queue_name: String,
@@ -80,6 +81,8 @@ pub struct Config {
     pub poll_interval: u64,
     pub poll_interval_error: u64,
     pub max_retries: i32,
+    pub webserver_port: u16,
+    pub num_server_workers: usize,
 }
 
 impl Config {
@@ -106,6 +109,8 @@ impl Config {
                 .parse()
                 .unwrap(),
             max_retries: from_env_default("MAX_RETRIES", "2").parse().unwrap(),
+            webserver_port: from_env_default("WEBSERVER_PORT", "8080").parse().unwrap(),
+            num_server_workers: from_env_default("NUM_SERVER_WORKERS", "8").parse().unwrap(),
         }
     }
 }

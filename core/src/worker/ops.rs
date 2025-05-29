@@ -182,9 +182,3 @@ async fn update_append_table(
     }
     Ok(())
 }
-
-pub async fn init_extension(pool: &Pool<Postgres>) -> anyhow::Result<()> {
-    let query = "CREATE EXTENSION IF NOT EXISTS vectorize CASCADE;";
-    sqlx::query(query).execute(pool).await?;
-    Ok(())
-}
