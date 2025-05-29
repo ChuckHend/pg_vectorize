@@ -160,6 +160,7 @@ impl OpenAIProvider {
 // OpenAI embedding model has a limit of 8192 tokens per input
 // there can be a number of ways condense the inputs
 pub fn trim_inputs(inputs: &[Inputs]) -> Vec<String> {
+    // TODO: need to dynamically calculate max input window
     inputs
         .iter()
         .map(|input| {

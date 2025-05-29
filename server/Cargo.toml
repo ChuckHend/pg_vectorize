@@ -8,6 +8,10 @@ publish = false
 name = "vectorize_server"
 path = "src/lib.rs"
 
+[[bin]]
+name = "vectorize-worker"
+path = "src/bin/worker.rs"
+
 [dependencies]
 vectorize_core = { path = "../core", package = "vectorize-core"}
 
@@ -33,3 +37,4 @@ reqwest = "0.12.16"
 env = "1.0.1"
 rand = "0.9.1"
 tiktoken-rs = "0.7.0"
+pgmq = "0.30.1"

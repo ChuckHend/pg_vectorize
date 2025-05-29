@@ -140,7 +140,7 @@ pub struct VectorizeMeta {
     pub params: serde_json::Value,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, FromRow)]
 pub struct Model {
     pub source: ModelSource,
     // the model's namespace + model name
@@ -165,6 +165,24 @@ where
     S: Serializer,
 {
     serializer.serialize_str(&model.fullname)
+}
+
+use sqlx::{
+    postgres::{PgTypeInfo, PgValueRef},
+    Decode, Type,
+};
+
+impl Type<sqlx::Postgres> for Model {
+    fn type_info() -> PgTypeInfo {
+        PgTypeInfo::with_name("TEXT")
+    }
+}
+
+impl<'r> Decode<'r, sqlx::Postgres> for Model {
+    fn decode(value: PgValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
+        let s = <String as Decode<sqlx::Postgres>>::decode(value)?;
+        Ok(Model::from(s))
+    }
 }
 
 impl Model {

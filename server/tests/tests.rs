@@ -27,9 +27,9 @@ async fn test_table() {
     // Create a valid VectorizeJob payload
     let payload = json!({
         "job_name": job_name,
-        "table": table,
-        "schema": "vectorize_test",
-        "column": "content",
+        "src_table": table,
+        "src_schema": "vectorize_test",
+        "src_column": "content",
         "primary_key": "id",
         "update_time_col": "updated_at",
         "model": "openai/text-embedding-3-small"

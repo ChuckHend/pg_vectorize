@@ -44,9 +44,11 @@ pub async fn poll_job(
     queue: &PGMQueueExt,
     config: &Config,
 ) -> Result<Option<()>> {
-    let msg: Message<JobMessage> = match queue.read::<JobMessage>(&config.queue_name, 1_i32).await {
+    let msg: Message<JobMessage> = match queue.read::<JobMessage>(&config.queue_name, 300_i32).await
+    {
         Ok(Some(msg)) => msg,
         Ok(None) => {
+            log::debug!("No message found in queue: {}", config.queue_name);
             return Ok(None);
         }
         Err(e) => {
@@ -218,8 +220,15 @@ pub async fn execute_job(dbclient: &Pool<Postgres>, msg: Message<JobMessage>) ->
             .await?;
         }
         crate::types::TableMethod::join => {
-            ops::upsert_embedding_table(dbclient, &job_meta.name, &job_params, paired_embeddings)
-                .await?
+            ops::upsert_embedding_table(
+                dbclient,
+                &job_meta.name,
+                paired_embeddings,
+                &job_params.schema,
+                &job_params.primary_key,
+                &job_params.pkey_type,
+            )
+            .await?
         }
     }
     Ok(())

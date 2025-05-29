@@ -41,7 +41,7 @@ pub async fn get_column_datatype(
         ",
         schema,
         table,
-        column
+        column,
     )
     .fetch_one(pool)
     .await?
@@ -100,9 +100,9 @@ pub async fn initialize_job(
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id")
         .bind(job_request.job_name.clone())
-        .bind(job_request.schema.clone())
-        .bind(job_request.table.clone())
-        .bind(job_request.column.clone())
+        .bind(job_request.src_schema.clone())
+        .bind(job_request.src_table.clone())
+        .bind(job_request.src_column.clone())
         .bind(job_request.primary_key.clone())
         .bind(job_request.update_time_col.clone())
         .bind(job_request.model.to_string())
@@ -120,19 +120,19 @@ pub async fn initialize_job(
         &job_request.primary_key,
         &get_column_datatype(
             pool,
-            &job_request.schema,
-            &job_request.table,
+            &job_request.src_schema,
+            &job_request.src_table,
             &job_request.primary_key,
         )
         .await?,
         &col_type,
-        &job_request.schema,
-        &job_request.table,
+        &job_request.src_schema,
+        &job_request.src_table,
     );
     let view_query = query::create_project_view(
         &job_request.job_name,
-        job_request.schema.as_str(),
-        job_request.table.as_str(),
+        job_request.src_schema.as_str(),
+        job_request.src_table.as_str(),
         &job_request.primary_key,
     );
 
@@ -152,14 +152,14 @@ pub async fn initialize_job(
         query::create_trigger_handler(&job_request.job_name, &job_request.job_name);
     let insert_trigger = query::create_event_trigger(
         &job_request.job_name,
-        &job_request.schema,
-        &job_request.table,
+        &job_request.src_schema,
+        &job_request.src_table,
         "INSERT",
     );
     let update_trigger = query::create_event_trigger(
         &job_request.job_name,
-        &job_request.schema,
-        &job_request.table,
+        &job_request.src_schema,
+        &job_request.src_table,
         "UPDATE",
     );
     sqlx::query(&trigger_handler).execute(&mut *tx).await?;
@@ -178,9 +178,9 @@ pub async fn initialize_job(
 pub async fn scan_job(pool: &PgPool, job_request: &VectorizeJob) -> Result<(), ServerError> {
     let rows_for_update_query = query::new_rows_query_join(
         &job_request.job_name,
-        &[job_request.column.clone()],
-        &job_request.schema,
-        &job_request.table,
+        &[job_request.src_column.clone()],
+        &job_request.src_schema,
+        &job_request.src_table,
         &job_request.primary_key,
         Some(job_request.update_time_col.clone()),
     );

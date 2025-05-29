@@ -3,18 +3,18 @@ use crate::init;
 use crate::init::get_column_datatype;
 use actix_web::{HttpResponse, post, web};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{PgPool, prelude::FromRow};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use vectorize_core::types::{Model, model_to_string, string_to_model};
 
-#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema, FromRow)]
 pub struct VectorizeJob {
     pub job_name: String,
-    pub table: String,
-    pub schema: String,
-    pub column: String,
+    pub src_table: String,
+    pub src_schema: String,
+    pub src_column: String,
     pub primary_key: String,
     pub update_time_col: String,
     #[serde(
@@ -48,15 +48,15 @@ pub async fn table(
     // validate update_time_col is timestamptz
     let datatype = get_column_datatype(
         &dbclient,
-        &payload.schema,
-        &payload.table,
+        &payload.src_schema,
+        &payload.src_table,
         &payload.update_time_col,
     )
     .await?;
     if datatype != "timestamp with time zone" {
         return Err(ServerError::InvalidRequest(format!(
             "Column {} in table {}.{} must be of type 'timestamp with time zone'",
-            payload.update_time_col, payload.schema, payload.table
+            payload.update_time_col, payload.src_schema, payload.src_table
         )));
     }
 

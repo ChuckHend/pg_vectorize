@@ -1,5 +1,4 @@
-use crate::transformers::types::PairedEmbeddings;
-use crate::types;
+use crate::{errors::VectorizeError, transformers::types::PairedEmbeddings};
 use anyhow::Result;
 use serde_json::to_string;
 use sqlx::{Pool, Postgres};
@@ -8,17 +7,19 @@ use std::fmt::Write;
 pub async fn upsert_embedding_table(
     conn: &Pool<Postgres>,
     project: &str,
-    job_params: &types::JobParams,
     embeddings: Vec<PairedEmbeddings>,
-) -> Result<()> {
-    let (query, bindings) = build_upsert_query(project, job_params, embeddings);
+    schema: &str,
+    pkey: &str,
+    pkey_type: &str,
+) -> Result<(), VectorizeError> {
+    let (query, bindings) = build_upsert_query(project, embeddings, pkey, pkey_type, schema);
     let mut q = sqlx::query(&query);
     for (record_id, embeddings) in bindings {
         q = q.bind(record_id).bind(embeddings);
     }
     match q.execute(conn).await {
         Ok(_) => Ok(()),
-        Err(e) => Err(anyhow::anyhow!("failed to execute query: {}", e)),
+        Err(e) => Err(anyhow::anyhow!("failed to execute query: {}", e).into()),
     }
 }
 
@@ -26,19 +27,16 @@ pub async fn upsert_embedding_table(
 // only compatible with pg-vector data types
 fn build_upsert_query(
     project: &str,
-    job_params: &types::JobParams,
     embeddings: Vec<PairedEmbeddings>,
+    pkey: &str,
+    pkey_type: &str,
+    schema: &str,
 ) -> (String, Vec<(String, String)>) {
-    let join_key = &job_params.primary_key;
-    let schema = match &job_params.table_method {
-        types::TableMethod::append => job_params.schema.clone(),
-        types::TableMethod::join => "vectorize".to_string(),
-    };
     let mut query = format!(
         "
         INSERT INTO {schema}._embeddings_{project} ({join_key}, embeddings) VALUES",
         schema = schema,
-        join_key = join_key,
+        join_key = pkey,
     );
     let mut bindings: Vec<(String, String)> = Vec::new();
 
@@ -49,7 +47,7 @@ fn build_upsert_query(
         query.push_str(&format!(
             " (${}::{}, ${}::vector)",
             2 * index + 1,
-            job_params.pkey_type,
+            pkey_type,
             2 * index + 2
         ));
 
@@ -60,7 +58,7 @@ fn build_upsert_query(
     let upsert = format!(
         " ON CONFLICT ({join_key})
         DO UPDATE SET embeddings = EXCLUDED.embeddings, updated_at = NOW();",
-        join_key = join_key
+        join_key = pkey
     );
     query.push_str(&upsert);
     (query, bindings)

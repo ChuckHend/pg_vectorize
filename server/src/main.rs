@@ -30,9 +30,6 @@ async fn main() {
             .app_data(web::Data::new(pool.clone()))
     })
     .workers(server_workers)
-    // if using ALB, TCP keep-alive should be greater than idle-timeout of ALB
-    // default ALB timeout is 60 seconds.
-    // https://docs.aws.amazon.com/elasticloadbalancing/latest/classic/config-idle-timeout.html
     .keep_alive(Duration::from_secs(75))
     .bind(("0.0.0.0", server_port))
     .expect("Failed to bind server")

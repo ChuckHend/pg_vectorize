@@ -1,6 +1,8 @@
 use vectorize_core::errors;
 
 use actix_web::{HttpResponse, ResponseError, http::StatusCode, web::JsonConfig};
+use anyhow::Error as AnyhowError;
+use pgmq::errors::PgmqError;
 use serde::Serialize;
 use serde::ser::SerializeMap;
 use serde_json;
@@ -23,6 +25,10 @@ pub enum ServerError {
     // serde error
     #[error("Serialization error: {0}")]
     SerdeError(#[from] serde_json::Error),
+    #[error("An internal error occurred: {0}")]
+    InternalError(#[from] AnyhowError),
+    #[error("PgmqError: {0}")]
+    PgmqError(#[from] PgmqError),
 }
 
 // public facing http errors
