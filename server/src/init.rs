@@ -1,5 +1,28 @@
 use crate::errors::ServerError;
+use crate::routes::table::VectorizeJob;
 use sqlx::PgPool;
+use std::process::Command;
+use uuid::Uuid;
+use vectorize_core::query;
+use vectorize_core::transformers::providers::get_provider;
+use vectorize_core::types::JobMessage;
+
+pub async fn init_project(pool: &PgPool, conn_string: Option<&str>) -> Result<(), ServerError> {
+    // Initialize the pgmq extension
+    init_pgmq(pool, conn_string).await?;
+
+    let statements = vec![
+        "CREATE SCHEMA IF NOT EXISTS vectorize;".to_string(),
+        "CREATE EXTENSION IF NOT EXISTS vector;".to_string(),
+        query::create_vectorize_table(),
+        "SELECT pgmq.create('vectorize_jobs');".to_string(),
+    ];
+    for s in statements {
+        sqlx::query(&s).execute(pool).await?;
+    }
+
+    Ok(())
+}
 
 pub async fn get_column_datatype(
     pool: &PgPool,
@@ -39,7 +62,7 @@ async fn pgmq_schema_exists(pool: &PgPool) -> Result<bool, sqlx::Error> {
     Ok(row)
 }
 
-pub async fn init_pgmq(pool: &PgPool) -> Result<(), ServerError> {
+pub async fn init_pgmq(pool: &PgPool, conn_string: Option<&str>) -> Result<(), ServerError> {
     // Check if the pgmq schema already exists
     if pgmq_schema_exists(pool).await? {
         log::info!("pgmq schema already exists, skipping initialization.");
@@ -53,49 +76,159 @@ pub async fn init_pgmq(pool: &PgPool) -> Result<(), ServerError> {
     let response = client.get(sql_url).send().await?;
     let sql_content = response.text().await?;
 
-    // Split the SQL into individual statements
-    // This handles basic semicolon separation - you might need more sophisticated parsing
-    // for complex SQL files with semicolons in strings, etc.
-    let statements = split_sql_statements(&sql_content);
-
-    println!("Found {} SQL statements", statements.len());
-
-    // Execute each statement
-    for (i, statement) in statements.iter().enumerate() {
-        let trimmed = statement.trim();
-        if trimmed.is_empty() || trimmed.starts_with("--") {
-            continue; // Skip empty lines and comments
-        }
-
-        println!("Executing statement {} of {}", i + 1, statements.len());
-
-        match sqlx::query(trimmed).execute(pool).await {
-            Ok(_) => {
-                println!("✓ Statement {} executed successfully", i + 1);
-            }
-            Err(e) => {
-                eprintln!("✗ Error executing statement {}: {}", i + 1, e);
-                eprintln!("Statement: {}", trimmed);
-                // Depending on your needs, you might want to continue or return the error
-                // return Err(e.into());
-            }
-        }
+    if let Some(url) = conn_string {
+        let output = Command::new("psql")
+            .arg(url)
+            .arg("-c")
+            .arg(sql_content)
+            .output()
+            .unwrap();
+        log::info!("{}", String::from_utf8_lossy(&output.stdout));
     }
 
     Ok(())
 }
 
-fn split_sql_statements(sql: &str) -> Vec<String> {
-    // Simple SQL statement splitter - splits on semicolons
-    // This is basic and might need enhancement for complex SQL
-    sql.split(';')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty() && !s.starts_with("--"))
-        .collect()
+pub async fn initialize_job(
+    pool: &PgPool,
+    job_request: &VectorizeJob,
+) -> Result<Uuid, ServerError> {
+    // create the job record
+    let mut tx = pool.begin().await?;
+    let job_id: Uuid = sqlx::query_scalar("
+        INSERT INTO vectorize.job (job_name, src_schema, src_table, src_column, primary_key, update_time_col, model)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id")
+        .bind(job_request.job_name.clone())
+        .bind(job_request.schema.clone())
+        .bind(job_request.table.clone())
+        .bind(job_request.column.clone())
+        .bind(job_request.primary_key.clone())
+        .bind(job_request.update_time_col.clone())
+        .bind(job_request.model.to_string())
+        .fetch_one(&mut *tx)
+        .await?;
+
+    // get model dimension
+    let provider = get_provider(&job_request.model.source, None, None, None)?;
+    let model_dim = provider.model_dim(&job_request.model.api_name()).await?;
+
+    // create embeddings table and views
+    let col_type = format!("vector({})", model_dim);
+    let create_query = query::create_embedding_table(
+        job_request.job_name.as_str(),
+        &job_request.primary_key,
+        &get_column_datatype(
+            pool,
+            &job_request.schema,
+            &job_request.table,
+            &job_request.primary_key,
+        )
+        .await?,
+        &col_type,
+        &job_request.schema,
+        &job_request.table,
+    );
+    let view_query = query::create_project_view(
+        &job_request.job_name,
+        job_request.schema.as_str(),
+        job_request.table.as_str(),
+        &job_request.primary_key,
+    );
+
+    let embeddings_table = format!("_embeddings_{}", job_request.job_name);
+    let index_query = query::create_hnsw_cosine_index(
+        &job_request.job_name,
+        "vectorize",
+        &embeddings_table,
+        "embeddings",
+    );
+    sqlx::query(&create_query).execute(&mut *tx).await?;
+    sqlx::query(&view_query).execute(&mut *tx).await?;
+    sqlx::query(&index_query).execute(&mut *tx).await?;
+
+    // create triggers on the source table
+    let trigger_handler =
+        query::create_trigger_handler(&job_request.job_name, &job_request.job_name);
+    let insert_trigger = query::create_event_trigger(
+        &job_request.job_name,
+        &job_request.schema,
+        &job_request.table,
+        "INSERT",
+    );
+    let update_trigger = query::create_event_trigger(
+        &job_request.job_name,
+        &job_request.schema,
+        &job_request.table,
+        "UPDATE",
+    );
+    sqlx::query(&trigger_handler).execute(&mut *tx).await?;
+    sqlx::query(&insert_trigger).execute(&mut *tx).await?;
+    sqlx::query(&update_trigger).execute(&mut *tx).await?;
+    tx.commit().await?;
+
+    // finally, enqueue pgmq job
+    // previous tx needs to be committed before we can enqueue the job
+    scan_job(pool, job_request).await?;
+
+    Ok(job_id)
 }
 
-// Alternative approach: Execute as a single batch (if supported by your SQL)
-async fn execute_sql_batch(pool: &PgPool, sql_content: &str) -> Result<(), sqlx::Error> {
-    sqlx::query(sql_content).execute(pool).await?;
+// enqueues jobs where records need embeddings computed
+pub async fn scan_job(pool: &PgPool, job_request: &VectorizeJob) -> Result<(), ServerError> {
+    let rows_for_update_query = query::new_rows_query_join(
+        &job_request.job_name,
+        &[job_request.column.clone()],
+        &job_request.schema,
+        &job_request.table,
+        &job_request.primary_key,
+        Some(job_request.update_time_col.clone()),
+    );
+
+    let new_or_updated_rows = query::get_new_updates(pool, &rows_for_update_query).await?;
+
+    match new_or_updated_rows {
+        Some(rows) => {
+            let batches = query::create_batches(rows, 10000);
+            for b in batches {
+                let record_ids = b.iter().map(|i| i.record_id.clone()).collect::<Vec<_>>();
+
+                let msg = JobMessage {
+                    job_name: job_request.job_name.clone(),
+                    record_ids,
+                };
+                let msg_id: i64 = sqlx::query_scalar(
+                    "SELECT * FROM pgmq.send(queue_name=>'vectorize_jobs', msg=>$1)",
+                )
+                .bind(serde_json::to_value(msg)?)
+                .fetch_one(pool)
+                .await?;
+                log::info!(
+                    "enqueued job_name: {}, msg_id: {}",
+                    job_request.job_name,
+                    msg_id,
+                );
+            }
+        }
+        None => {
+            log::warn!(
+                "No new or updated rows found for job: {}",
+                job_request.job_name
+            );
+        }
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_init_pgmq() {
+        env_logger::init();
+        let conn_string = "postgresql://postgres:postgres@localhost:5432/postgres";
+        let pool = PgPool::connect(conn_string).await.unwrap();
+        init_pgmq(&pool, Some(conn_string)).await.unwrap();
+    }
 }

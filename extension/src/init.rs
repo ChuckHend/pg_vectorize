@@ -115,7 +115,12 @@ pub fn init_embedding_table_query(
                 index_stmt,
                 // also create a view over the source table and the embedding table, for this project
                 query::drop_project_view(job_name),
-                query::create_project_view(job_name, job_params),
+                query::create_project_view(
+                    job_name,
+                    &job_params.schema,
+                    &job_params.relation,
+                    &job_params.primary_key,
+                ),
             ];
 
             // Currently creating a GIN index within this function

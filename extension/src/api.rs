@@ -2,13 +2,13 @@ use crate::chat::ops::{call_chat, call_chat_completions};
 use crate::chat::types::RenderedPrompt;
 use crate::guc::get_guc_configs;
 use crate::init::{init_cron, VECTORIZE_QUEUE};
-use crate::job::{create_event_trigger, create_trigger_handler};
 use crate::search::{self, init_table};
 use crate::transformers::generic::env_interpolate_string;
 use crate::transformers::transform;
 use crate::types;
 use crate::util::get_vectorize_meta_spi;
 use text_splitter::TextSplitter;
+use vectorize_core::query::{create_event_trigger, create_trigger_handler};
 use vectorize_core::types::{JobParams, Model};
 
 use anyhow::Result;

@@ -8,35 +8,10 @@ use sqlx::postgres::PgRow;
 use sqlx::{Pool, Postgres, Row};
 use tiktoken_rs::cl100k_base;
 use vectorize_core::errors::DatabaseError;
-use vectorize_core::query::check_input;
+use vectorize_core::query::{check_input, create_batches, new_rows_query_join};
 use vectorize_core::transformers::types::Inputs;
 use vectorize_core::types::{JobMessage, JobParams, TableMethod};
 use vectorize_core::worker::base::get_vectorize_meta;
-
-// creates batches based on total token count
-// batch_size is the max token count per batch
-pub fn create_batches(data: Vec<Inputs>, batch_size: i32) -> Vec<Vec<Inputs>> {
-    let mut groups: Vec<Vec<Inputs>> = Vec::new();
-    let mut current_group: Vec<Inputs> = Vec::new();
-    let mut current_token_count = 0;
-
-    for input in data {
-        if current_token_count + input.token_estimate > batch_size {
-            // Create a new group
-            groups.push(current_group);
-            current_group = Vec::new();
-            current_token_count = 0;
-        }
-        current_token_count += input.token_estimate;
-        current_group.push(input);
-    }
-
-    // Add any remaining inputs to the groups
-    if !current_group.is_empty() {
-        groups.push(current_group);
-    }
-    groups
-}
 
 #[pg_extern]
 pub fn batch_texts(
@@ -121,49 +96,6 @@ fn job_execute(job_name: String) {
     })
 }
 
-pub fn new_rows_query_join(job_name: &str, job_params: &JobParams) -> String {
-    let cols = &job_params
-        .columns
-        .iter()
-        .map(|s| format!("t0.{}", s))
-        .collect::<Vec<_>>()
-        .join(",");
-    let schema = job_params.schema.clone();
-    let table = job_params.relation.clone();
-
-    let base_query = format!(
-        "
-    SELECT t0.{join_key}::text as record_id, {cols} as input_text
-    FROM {schema}.{table} t0
-    LEFT JOIN vectorize._embeddings_{job_name} t1 ON t0.{join_key} = t1.{join_key}
-    WHERE t1.{join_key} IS NULL",
-        join_key = job_params.primary_key,
-        cols = cols,
-        schema = schema,
-        table = table,
-        job_name = job_name
-    );
-    if let Some(updated_at_col) = &job_params.update_time_col {
-        // updated_at_column is not required when `schedule` is realtime
-        let where_clause = format!(
-            "
-            OR t0.{updated_at_col} > COALESCE
-            (
-                t1.updated_at::timestamp,
-                '0001-01-01 00:00:00'::timestamp
-            )",
-        );
-        format!(
-            "
-            {base_query}
-            {where_clause}
-        "
-        )
-    } else {
-        base_query
-    }
-}
-
 pub fn new_rows_query(job_name: &str, job_params: &JobParams) -> String {
     let cols = collapse_to_csv(&job_params.columns);
 
@@ -210,7 +142,14 @@ pub async fn get_new_updates(
 ) -> Result<Option<Vec<Inputs>>, DatabaseError> {
     let query = match job_params.table_method {
         TableMethod::append => new_rows_query(job_name, &job_params),
-        TableMethod::join => new_rows_query_join(job_name, &job_params),
+        TableMethod::join => new_rows_query_join(
+            job_name,
+            &job_params.columns,
+            &job_params.schema,
+            &job_params.relation,
+            &job_params.primary_key,
+            job_params.update_time_col.clone(),
+        ),
     };
     let rows: Result<Vec<PgRow>, Error> = sqlx::query(&query).fetch_all(pool).await;
     match rows {

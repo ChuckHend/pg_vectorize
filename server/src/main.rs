@@ -2,8 +2,9 @@ use actix_cors::Cors;
 use actix_web::{App, HttpServer, middleware, web};
 use std::time::Duration;
 
-use vectorize_core::worker::base::Config;
+use vectorize_server::init;
 
+use vectorize_core::worker::base::Config;
 #[actix_web::main]
 async fn main() {
     env_logger::init();
@@ -16,7 +17,9 @@ async fn main() {
         .expect("unable to connect to postgres");
     let server_port = cfg.webserver_port;
     let server_workers = cfg.num_server_workers;
-
+    init::init_project(&pool, Some(&cfg.database_url))
+        .await
+        .expect("Failed to initialize project");
     let _ = HttpServer::new(move || {
         let cors = Cors::permissive();
 

@@ -1,7 +1,7 @@
 use crate::guc;
 use crate::guc::get_guc_configs;
 use crate::init;
-use crate::job::{create_event_trigger, create_trigger_handler, initalize_table_job};
+use crate::job::initalize_table_job;
 use crate::transformers::openai;
 use crate::transformers::transform;
 use crate::util;
@@ -13,6 +13,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use vectorize_core::guc::VectorizeGuc;
 use vectorize_core::query;
+use vectorize_core::query::{create_event_trigger, create_trigger_handler};
 use vectorize_core::transformers::providers::get_provider;
 use vectorize_core::transformers::providers::ollama::check_model_host;
 use vectorize_core::types::{self, Model, ModelSource, TableMethod, VectorizeMeta};

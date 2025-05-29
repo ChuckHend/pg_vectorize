@@ -151,7 +151,7 @@ pub struct Model {
 use serde::de::Deserializer;
 use serde::Serializer;
 
-fn string_to_model<'de, D>(deserializer: D) -> Result<Model, D::Error>
+pub fn string_to_model<'de, D>(deserializer: D) -> Result<Model, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -160,7 +160,7 @@ where
 }
 
 // New serialization function
-fn model_to_string<S>(model: &Model, serializer: S) -> Result<S::Ok, S::Error>
+pub fn model_to_string<S>(model: &Model, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
