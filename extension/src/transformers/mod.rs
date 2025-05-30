@@ -5,10 +5,10 @@ pub mod openai;
 use crate::guc;
 use pgrx::prelude::*;
 
-use vectorize_core::guc::ModelGucConfig;
-use vectorize_core::transformers::providers::{self, prepare_generic_embedding_request};
-use vectorize_core::transformers::types::Inputs;
-use vectorize_core::types::Model;
+use vectorize_core::core::guc::ModelGucConfig;
+use vectorize_core::core::transformers::providers::{self, prepare_generic_embedding_request};
+use vectorize_core::core::transformers::types::Inputs;
+use vectorize_core::core::types::Model;
 
 pub fn transform(input: &str, transformer: &Model, api_key: Option<String>) -> Vec<Vec<f64>> {
     let runtime = tokio::runtime::Builder::new_current_thread()

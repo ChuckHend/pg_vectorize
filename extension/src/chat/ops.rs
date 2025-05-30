@@ -5,17 +5,17 @@ use crate::util::get_vectorize_meta_spi;
 use anyhow::{anyhow, Result};
 use handlebars::Handlebars;
 use pgrx::prelude::*;
-use vectorize_core::guc::ModelGucConfig;
-use vectorize_core::transformers::providers::ollama::OllamaProvider;
-use vectorize_core::transformers::providers::openai::OpenAIProvider;
-use vectorize_core::transformers::providers::portkey::PortkeyProvider;
-use vectorize_core::transformers::providers::ChatMessageRequest;
-use vectorize_core::types::Model;
-use vectorize_core::types::ModelSource;
+use vectorize_core::core::guc::ModelGucConfig;
+use vectorize_core::core::transformers::providers::ollama::OllamaProvider;
+use vectorize_core::core::transformers::providers::openai::OpenAIProvider;
+use vectorize_core::core::transformers::providers::portkey::PortkeyProvider;
+use vectorize_core::core::transformers::providers::ChatMessageRequest;
+use vectorize_core::core::types::Model;
+use vectorize_core::core::types::ModelSource;
 
 use crate::chat::types::{ChatResponse, ContextualSearch, PromptTemplate, RenderedPrompt};
 use tiktoken_rs::{get_bpe_from_model, model::get_context_size, CoreBPE};
-use vectorize_core::types::{JobParams, VectorizeMeta};
+use vectorize_core::core::types::{JobParams, VectorizeMeta};
 
 pub fn call_chat(
     job_name: &str,
@@ -166,7 +166,7 @@ pub fn call_chat_completions(
                 let provider = OpenAIProvider::new(
                     guc_configs.service_url.clone(),
                     guc_configs.api_key.clone(),
-                );
+                )?;
                 provider
                     .generate_response(model.api_name(), &messages)
                     .await

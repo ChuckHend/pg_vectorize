@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use vectorize_core::transformers::generic::{find_placeholders, interpolate};
+use vectorize_core::core::transformers::generic::{find_placeholders, interpolate};
 
 /// Interpolates environment variables into a string
 /// if env var is missing, the placeholder is left as a raw string

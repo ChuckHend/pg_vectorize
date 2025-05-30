@@ -1,6 +1,6 @@
 use anyhow::Result;
 use pgrx::prelude::*;
-use vectorize_core::transformers::http_handler::handle_response;
+use vectorize_core::core::transformers::http_handler::handle_response;
 
 use crate::guc::EMBEDDING_REQ_TIMEOUT_SEC;
 

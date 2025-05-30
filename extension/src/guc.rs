@@ -3,8 +3,8 @@ use core::ffi::CStr;
 use pgrx::*;
 
 use crate::transformers::generic::env_interpolate_string;
-use vectorize_core::guc::{ModelGucConfig, VectorizeGuc};
-use vectorize_core::types::ModelSource;
+use vectorize_core::core::guc::{ModelGucConfig, VectorizeGuc};
+use vectorize_core::core::types::ModelSource;
 
 pub static VECTORIZE_HOST: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
 pub static VECTORIZE_DATABASE_NAME: GucSetting<Option<&CStr>> =

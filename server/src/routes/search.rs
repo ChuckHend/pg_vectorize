@@ -1,7 +1,7 @@
 use crate::core::query;
 use crate::core::transformers::providers::prepare_generic_embedding_request;
 use crate::{core::transformers::types::Inputs, errors::ServerError};
-use actix_web::{HttpResponse, post, web};
+use actix_web::{HttpResponse, get, web};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row, prelude::FromRow};
 use utoipa::ToSchema;
@@ -27,8 +27,8 @@ pub struct SearchResponse {
         ),
     ),
 )]
-#[post("/search")]
-pub async fn table(
+#[get("/search")]
+pub async fn search(
     pool: web::Data<PgPool>,
     payload: web::Json<SearchRequest>,
 ) -> Result<HttpResponse, ServerError> {
@@ -61,6 +61,7 @@ pub async fn table(
         3,
         None,
     );
+    log::error!("Generated query: {}", q);
     let results = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
         .fetch_all(&**pool)
@@ -68,7 +69,7 @@ pub async fn table(
 
     let json_results: Vec<serde_json::Value> = results
         .iter()
-        .map(|row| row.get::<serde_json::Value, _>("row"))
+        .map(|row| row.get::<serde_json::Value, _>("results"))
         .collect();
 
     Ok(HttpResponse::Ok().json(json_results))
