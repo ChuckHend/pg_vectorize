@@ -62,7 +62,7 @@ pub fn init_index_query(job_name: &str, idx_type: &str, job_params: &JobParams) 
 /// creates a project view over a source table and the embeddings table
 pub fn create_project_view(job_name: &str, schema: &str, relation: &str, pkey: &str) -> String {
     format!(
-        "CREATE VIEW vectorize.{job_name}_view as 
+        "CREATE OR REPLACE VIEW vectorize.{job_name}_view as 
         SELECT t0.*, t1.embeddings, t1.updated_at as embeddings_updated_at
         FROM {schema}.{table} t0
         INNER JOIN vectorize._embeddings_{job_name} t1

@@ -47,12 +47,9 @@ pub async fn get_column_datatype(
     .fetch_one(pool)
     .await
     .map_err(|e| {
-        ServerError::InternalError(anyhow!(
-            "Failed to get column datatype for {}.{}.{}: {}",
-            schema,
-            table,
-            column,
-            e
+        ServerError::InvalidRequest(format!(
+            "schema, table or column NOT FOUND for {}.{}.{}: {}",
+            schema, table, column, e
         ))
     })?;
 
@@ -115,6 +112,13 @@ pub async fn initialize_job(
     let job_id: Uuid = sqlx::query_scalar("
         INSERT INTO vectorize.job (job_name, src_schema, src_table, src_column, primary_key, update_time_col, model)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (job_name) DO UPDATE SET
+            src_schema = EXCLUDED.src_schema,
+            src_table = EXCLUDED.src_table,
+            src_column = EXCLUDED.src_column,
+            primary_key = EXCLUDED.primary_key,
+            update_time_col = EXCLUDED.update_time_col,
+            model = EXCLUDED.model
         RETURNING id")
         .bind(job_request.job_name.clone())
         .bind(job_request.src_schema.clone())

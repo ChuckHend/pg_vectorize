@@ -1,59 +1,18 @@
-x-logging: &default-logging
-  driver: json-file
-  options:
-    max-size: 10m
-    max-file: 50
-
-x-env: &default-env
-  OPENAI_API_KEY: ${OPENAI_API_KEY}
-  CO_API_KEY: ${CO_API_KEY}
-  VOYAGE_API_KEY: ${VOYAGE_API_KEY}
-  DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/postgres}
-
 services:
   postgres:
     restart: always
-    logging: *default-logging
-    environment:
-      <<: *default-env
-      POSTGRES_PASSWORD: postgres
-    # image: ghcr.io/chuckhend/vectorize-pg:latest
-    image: pgvector/pgvector:0.8.0-pg17
+    image: ghcr.io/chuckhend/vectorize-pg:latest
     ports:
       - 5432:5432
-  server:
-    restart: always
-    logging: *default-logging
-    depends_on:
-      - postgres
-    build:
-      dockerfile: server/Dockerfile
-      context: .
     environment:
-        <<: *default-env
-        RUST_LOG: info
-    command: vectorize-server
-  worker:
-    restart: always
-    logging: *default-logging
-    depends_on:
-      - postgres
-    build:
-      dockerfile: server/Dockerfile
-      context: .
-    environment:
-        <<: *default-env
-        RUST_LOG: info
-    command: vectorize-worker
+      - POSTGRES_PASSWORD=postgres
   vector-serve:
     restart: always
-    logging: *default-logging
     image: ghcr.io/chuckhend/vector-serve:latest
     ports:
       - 3000:3000
   ollama-serve:
     image: quay.io/tembo/ollama-serve:latest
-    logging: *default-logging
     ports:
       - 3001:3001
     environment:

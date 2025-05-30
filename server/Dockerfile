@@ -6,12 +6,13 @@ RUN apt-get update && \
 
 WORKDIR /build
 
-COPY core/ core/
-COPY server/ server/
+COPY .sqlx .sqlx/
+COPY src src/
+COPY Cargo.toml Cargo.lock ./
 
 ENV SQLX_OFFLINE=1
-RUN cd server && cargo build --bin vectorize-worker --release
-RUN cd server && cargo build --bin vectorize-server --release
+RUN cargo build --bin vectorize-worker --release
+RUN cargo build --bin vectorize-server --release
 
 FROM rust:1.87.0-slim-bookworm
 
@@ -19,5 +20,5 @@ RUN apt-get update && \
     apt-get install -y postgresql-client && apt-get clean && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-COPY --from=builder /build/server/target/release/vectorize-worker /usr/local/bin/vectorize-worker
-COPY --from=builder /build/server/target/release/vectorize-server /usr/local/bin/vectorize-server
+COPY --from=builder /build/target/release/vectorize-worker /usr/local/bin/vectorize-worker
+COPY --from=builder /build/target/release/vectorize-server /usr/local/bin/vectorize-server

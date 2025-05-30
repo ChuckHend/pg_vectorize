@@ -29,6 +29,7 @@ async fn main() {
             .wrap(middleware::Logger::default())
             .app_data(web::Data::new(cfg.clone()))
             .app_data(web::Data::new(pool.clone()))
+            .configure(vectorize_server::server::route_config)
     })
     .workers(server_workers)
     .keep_alive(Duration::from_secs(75))

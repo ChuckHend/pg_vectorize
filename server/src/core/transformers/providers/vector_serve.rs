@@ -26,7 +26,9 @@ impl VectorServeProvider {
     pub fn new(url: Option<String>, api_key: Option<String>) -> Self {
         let final_url = match url {
             Some(url) => url,
-            None => VECTOR_SERVE_BASE_URL.to_string(),
+            None => {
+                env::var("EMBEDDING_SVC_URL").unwrap_or_else(|_| VECTOR_SERVE_BASE_URL.to_string())
+            }
         };
         let final_api_key = match api_key {
             Some(api_key) => Some(api_key),

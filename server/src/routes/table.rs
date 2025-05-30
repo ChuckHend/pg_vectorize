@@ -34,7 +34,7 @@ pub struct JobResponse {
     responses(
         (
             status = 200, description = "Initialize a vectorize job",
-            body = Option<Vec<Conversation>>,
+            body = JobResponse,
         ),
     ),
 )]
