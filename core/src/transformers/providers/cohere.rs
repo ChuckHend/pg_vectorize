@@ -58,19 +58,25 @@ struct CohereEmbeddingResponse {
 }
 
 impl CohereProvider {
-    pub fn new(url: Option<String>, api_key: Option<String>) -> Self {
+    pub fn new(url: Option<String>, api_key: Option<String>) -> Result<Self, VectorizeError> {
         let final_url = match url {
             Some(url) => url,
             None => COHERE_BASE_URL.to_string(),
         };
         let final_api_key = match api_key {
             Some(api_key) => api_key,
-            None => env::var("CO_API_KEY").expect("CO_API_KEY not set"),
+            None => match env::var("CO_API_KEY") {
+                Ok(key) => key,
+                Err(e) => {
+                    log::error!("CO_API_KEY environment variable not set.");
+                    Err(e)?
+                }
+            },
         };
-        CohereProvider {
+        Ok(CohereProvider {
             url: final_url,
             api_key: final_api_key,
-        }
+        })
     }
 }
 
@@ -116,7 +122,7 @@ mod integration_tests {
     #[ignore]
     #[async_test]
     async fn test_generate_embedding() {
-        let provider = CohereProvider::new(Some(COHERE_BASE_URL.to_string()), None);
+        let provider = CohereProvider::new(Some(COHERE_BASE_URL.to_string()), None).unwrap();
         let request = GenericEmbeddingRequest {
             model: "embed-english-light-v3.0".to_string(),
             input: vec!["hello world".to_string()],

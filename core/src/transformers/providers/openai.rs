@@ -56,19 +56,25 @@ impl From<OpenAIEmbeddingResponse> for GenericEmbeddingResponse {
 }
 
 impl OpenAIProvider {
-    pub fn new(url: Option<String>, api_key: Option<String>) -> Self {
+    pub fn new(url: Option<String>, api_key: Option<String>) -> Result<Self, VectorizeError> {
         let final_url = match url {
             Some(url) => url,
             None => OPENAI_BASE_URL.to_string(),
         };
         let final_api_key = match api_key {
             Some(api_key) => api_key,
-            None => env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set"),
+            None => match env::var("OPENAI_API_KEY") {
+                Ok(key) => key,
+                Err(e) => {
+                    log::error!("OPENAI_API_KEY environment variable is not set");
+                    Err(e)?
+                }
+            },
         };
-        OpenAIProvider {
+        Ok(OpenAIProvider {
             url: final_url,
             api_key: final_api_key,
-        }
+        })
     }
 }
 
@@ -187,7 +193,7 @@ mod integration_tests {
     #[ignore]
     #[async_test]
     async fn test_generate_embedding() {
-        let provider = OpenAIProvider::new(Some(OPENAI_BASE_URL.to_string()), None);
+        let provider = OpenAIProvider::new(Some(OPENAI_BASE_URL.to_string()), None).unwrap();
         let request = GenericEmbeddingRequest {
             model: "text-embedding-ada-002".to_string(),
             input: vec!["hello world".to_string()],

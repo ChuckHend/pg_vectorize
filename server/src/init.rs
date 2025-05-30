@@ -1,5 +1,6 @@
 use crate::errors::ServerError;
 use crate::routes::table::VectorizeJob;
+use anyhow::anyhow;
 use sqlx::PgPool;
 use std::process::Command;
 use uuid::Uuid;
@@ -30,7 +31,7 @@ pub async fn get_column_datatype(
     table: &str,
     column: &str,
 ) -> Result<String, ServerError> {
-    sqlx::query_scalar!(
+    let row: String = sqlx::query_scalar(
         "
         SELECT data_type
         FROM information_schema.columns
@@ -39,18 +40,23 @@ pub async fn get_column_datatype(
             AND table_name = $2
             AND column_name = $3    
         ",
-        schema,
-        table,
-        column,
     )
+    .bind(schema)
+    .bind(table)
+    .bind(column)
     .fetch_one(pool)
-    .await?
-    .ok_or_else(|| {
-        ServerError::NotFoundError(format!(
-            "Column {} not found in table {}.{}",
-            column, schema, table
+    .await
+    .map_err(|e| {
+        ServerError::InternalError(anyhow!(
+            "Failed to get column datatype for {}.{}.{}: {}",
+            schema,
+            table,
+            column,
+            e
         ))
-    })
+    })?;
+
+    Ok(row)
 }
 
 async fn pgmq_schema_exists(pool: &PgPool) -> Result<bool, sqlx::Error> {
@@ -67,6 +73,8 @@ pub async fn init_pgmq(pool: &PgPool, conn_string: Option<&str>) -> Result<(), S
     if pgmq_schema_exists(pool).await? {
         log::info!("pgmq schema already exists, skipping initialization.");
         return Ok(());
+    } else {
+        log::info!("Installing pgmq...")
     }
 
     // URL to the raw SQL file
@@ -83,6 +91,15 @@ pub async fn init_pgmq(pool: &PgPool, conn_string: Option<&str>) -> Result<(), S
             .arg(sql_content)
             .output()
             .unwrap();
+        if !output.status.success() {
+            log::error!(
+                "failed to install pgmq: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return Err(ServerError::InternalError(anyhow!(
+                "Failed to install pgmq".to_string()
+            )));
+        }
         log::info!("{}", String::from_utf8_lossy(&output.stdout));
     }
 

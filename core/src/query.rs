@@ -245,7 +245,7 @@ pub async fn get_new_updates<'c, E: sqlx::Executor<'c, Database = Postgres>>(
     pool: E,
     query: &str,
 ) -> Result<Option<Vec<Inputs>>, Error> {
-    let rows: Result<Vec<PgRow>, Error> = sqlx::query(&query).fetch_all(pool).await;
+    let rows: Result<Vec<PgRow>, Error> = sqlx::query(query).fetch_all(pool).await;
     match rows {
         Ok(rows) => {
             if !rows.is_empty() {

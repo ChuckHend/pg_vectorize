@@ -50,19 +50,25 @@ impl From<VoyageEmbeddingResponse> for GenericEmbeddingResponse {
 }
 
 impl VoyageProvider {
-    pub fn new(url: Option<String>, api_key: Option<String>) -> Self {
+    pub fn new(url: Option<String>, api_key: Option<String>) -> Result<Self, VectorizeError> {
         let final_url = match url {
             Some(url) => url,
             None => VOYAGE_BASE_URL.to_string(),
         };
         let final_api_key = match api_key {
             Some(api_key) => api_key,
-            None => env::var("VOYAGE_API_KEY").expect("VOYAGE_API_KEY not set"),
+            None => match env::var("VOYAGE_API_KEY") {
+                Ok(key) => key,
+                Err(e) => {
+                    log::error!("VOYAGE_API_KEY environment variable is not set.");
+                    Err(e)?
+                }
+            },
         };
-        VoyageProvider {
+        Ok(VoyageProvider {
             url: final_url,
             api_key: final_api_key,
-        }
+        })
     }
 }
 
@@ -111,13 +117,11 @@ impl EmbeddingProvider for VoyageProvider {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use std::env;
 
     #[ignore]
     #[tokio::test]
     async fn test_voyage_ai_embedding() {
-        let api_key = Some(env::var("VOYAGE_API_KEY").expect("VOYAGE_API_KEY must be set"));
-        let provider = VoyageProvider::new(Some(VOYAGE_BASE_URL.to_string()), api_key);
+        let provider = VoyageProvider::new(Some(VOYAGE_BASE_URL.to_string()), None).unwrap();
 
         let request = GenericEmbeddingRequest {
             input: vec!["hello world".to_string()],

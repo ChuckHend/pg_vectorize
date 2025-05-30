@@ -58,10 +58,10 @@ pub fn get_provider(
     match model_source {
         ModelSource::OpenAI => Ok(Box::new(providers::openai::OpenAIProvider::new(
             url, api_key,
-        ))),
+        )?)),
         ModelSource::Cohere => Ok(Box::new(providers::cohere::CohereProvider::new(
             url, api_key,
-        ))),
+        )?)),
         ModelSource::Portkey => Ok(Box::new(providers::portkey::PortkeyProvider::new(
             url,
             api_key,
@@ -69,7 +69,7 @@ pub fn get_provider(
         ))),
         ModelSource::Voyage => Ok(Box::new(providers::voyage::VoyageProvider::new(
             url, api_key,
-        ))),
+        )?)),
         ModelSource::SentenceTransformers => Ok(Box::new(
             providers::vector_serve::VectorServeProvider::new(url, api_key),
         )),

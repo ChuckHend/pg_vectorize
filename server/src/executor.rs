@@ -29,10 +29,25 @@ pub async fn poll_job(
         }
     };
 
+    let job_name = msg.message.job_name.clone();
+
     let read_ct: i32 = msg.read_ct;
     let msg_id: i64 = msg.msg_id;
     if read_ct <= config.max_retries {
-        execute_job(conn, msg).await?;
+        match execute_job(conn, msg).await {
+            Ok(_) => {
+                log::info!("Successfully processed job: {}", job_name);
+            }
+            Err(e) => {
+                log::error!(
+                    "Error processing job: {}, msg_id: {}, error: {}",
+                    job_name,
+                    msg_id,
+                    e
+                );
+                Err(e)?;
+            }
+        }
     } else {
         log::error!(
             "message exceeds max retry of {}, archiving msg_id: {}",
@@ -102,7 +117,6 @@ async fn execute_job(pool: &PgPool, msg: Message<JobMessage>) -> Result<(), Serv
         })
         .collect();
 
-    log::debug!("processed {} num inputs", inputs.len());
     let embedding_request =
         providers::prepare_generic_embedding_request(&vectorizejob.model, &inputs);
 

@@ -7,6 +7,11 @@ use serde_json::json;
 use util::common;
 use vectorize_server::routes::table::JobResponse;
 
+// these tests require:
+// 1. Postgres to be running
+// 2. job-worker binary to be running
+// easiest way is to run these with docker-compose.yml
+#[ignore]
 #[actix_web::test]
 async fn test_table() {
     env_logger::init();

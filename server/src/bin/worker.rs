@@ -1,5 +1,6 @@
 use vectorize_core::worker::base::Config;
 use vectorize_server::executor::poll_job;
+use vectorize_server::init;
 
 #[tokio::main]
 async fn main() {
@@ -8,18 +9,22 @@ async fn main() {
 
     let cfg = Config::from_env();
 
-    let conn = sqlx::postgres::PgPoolOptions::new()
+    let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(5)
         .connect(&cfg.database_url)
         .await
         .expect("unable to connect to postgres");
 
-    let queue = pgmq::PGMQueueExt::new_with_pool(conn.clone()).await;
+    init::init_project(&pool, Some(&cfg.database_url))
+        .await
+        .expect("Failed to initialize project");
+
+    let queue = pgmq::PGMQueueExt::new_with_pool(pool.clone()).await;
 
     loop {
-        match poll_job(&conn, &queue, &cfg).await {
+        match poll_job(&pool, &queue, &cfg).await {
             Ok(Some(_)) => {
-                log::error!("yolo!");
+                log::info!("processed job!");
                 // continue processing
             }
             Ok(None) => {

@@ -1,5 +1,5 @@
 [package]
-name = "server"
+name = "vectorize-server"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -20,21 +20,21 @@ actix-http = "3.11.0"
 actix-rt = "2.10.0"
 actix-service = "2.0.3"
 actix-web = "4.11.0"
+anyhow = "1.0.98"
 chrono = {version = "0.4.41", features = ["serde"] }
+env = "1.0.1"
 env_logger = "0.11.8"
+log = "0.4.27"
+pgmq = "0.30.1"
+rand = "0.9.1"
+reqwest = "0.12.16"
 serde = "1.0.219"
 serde_json = "1.0.140"
 sqlx = { version = "0.8", features = [ "runtime-tokio-native-tls", "postgres", "chrono", "json", "uuid"]}
 thiserror = "2.0.12"
+tiktoken-rs = "0.7.0"
 tokio = { version = "1.45.0", features = ["full"] }
 url = "2.5.4"
-uuid = { version = "1.16.0", features = ["v4", "fast-rng", "macro-diagnostics", "serde"] }
 utoipa = { version = "4", features = ["actix_extras", "chrono", "uuid"] }
 utoipa-swagger-ui  = { version = "7", features = ["actix-web"] }
-log = "0.4.27"
-anyhow = "1.0.98"
-reqwest = "0.12.16"
-env = "1.0.1"
-rand = "0.9.1"
-tiktoken-rs = "0.7.0"
-pgmq = "0.30.1"
+uuid = { version = "1.16.0", features = ["v4", "fast-rng", "macro-diagnostics", "serde"] }
