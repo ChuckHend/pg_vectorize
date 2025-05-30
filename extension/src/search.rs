@@ -432,9 +432,11 @@ pub fn cosine_similarity_search(
             num_results,
             where_clause,
         ),
-        TableMethod::join => join_table_cosine_similarity(
+        TableMethod::join => query::join_table_cosine_similarity(
             project,
-            job_params,
+            &job_params.schema,
+            &job_params.relation,
+            &job_params.primary_key,
             return_columns,
             num_results,
             where_clause,
@@ -451,54 +453,6 @@ pub fn cosine_similarity_search(
         }
         Ok(results)
     })
-}
-
-fn join_table_cosine_similarity(
-    project: &str,
-    job_params: &types::JobParams,
-    return_columns: &[String],
-    num_results: i32,
-    where_clause: Option<String>,
-) -> String {
-    let schema = job_params.schema.clone();
-    let table = job_params.relation.clone();
-    let join_key = &job_params.primary_key;
-    let cols = &return_columns
-        .iter()
-        .map(|s| format!("t0.{}", s))
-        .collect::<Vec<_>>()
-        .join(",");
-
-    let where_str = if let Some(w) = where_clause {
-        prepare_filter(&w, join_key)
-    } else {
-        "".to_string()
-    };
-    let inner_query = format!(
-        "
-    SELECT
-        {join_key},
-        1 - (embeddings <=> $1::vector) AS similarity_score
-    FROM vectorize._embeddings_{project}
-    ORDER BY similarity_score DESC
-    "
-    );
-    format!(
-        "
-    SELECT to_jsonb(t) as results
-    FROM (
-        SELECT {cols}, t1.similarity_score
-        FROM
-            (
-                {inner_query}
-            ) t1
-        INNER JOIN {schema}.{table} t0 on t0.{join_key} = t1.{join_key}
-        {where_str}
-    ) t
-    ORDER BY t.similarity_score DESC
-    LIMIT {num_results};
-    "
-    )
 }
 
 fn single_table_cosine_similarity(
@@ -530,10 +484,4 @@ fn single_table_cosine_similarity(
     ",
         cols = return_columns.join(", "),
     )
-}
-
-// transform user's where_sql into the format search query expects
-fn prepare_filter(filter: &str, pkey: &str) -> String {
-    let wc = filter.replace(pkey, &format!("t0.{}", pkey));
-    format!("AND {wc}")
 }
