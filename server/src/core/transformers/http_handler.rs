@@ -1,5 +1,5 @@
-use crate::errors::VectorizeError;
-use crate::transformers::types::{Inputs, PairedEmbeddings};
+use crate::core::errors::VectorizeError;
+use crate::core::transformers::types::{Inputs, PairedEmbeddings};
 
 pub async fn handle_response<T: for<'de> serde::Deserialize<'de>>(
     resp: reqwest::Response,

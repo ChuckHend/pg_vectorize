@@ -1,16 +1,16 @@
+use crate::core::types::JobMessage;
 use pgmq::Message;
 use sqlx::PgPool;
-use vectorize_core::types::JobMessage;
 
+use crate::core::transformers::{http_handler, providers, types::Inputs};
+use crate::core::worker::base::Config;
+use crate::core::worker::ops;
 use crate::db;
 use crate::errors::ServerError;
 use crate::init;
 use anyhow::Result;
 use pgmq::PGMQueueExt;
 use tiktoken_rs::cl100k_base;
-use vectorize_core::transformers::{http_handler, providers, types::Inputs};
-use vectorize_core::worker::base::Config;
-use vectorize_core::worker::ops;
 
 pub async fn poll_job(
     conn: &PgPool,

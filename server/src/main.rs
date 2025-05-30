@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use vectorize_server::init;
 
-use vectorize_core::worker::base::Config;
+use vectorize_server::core::worker::base::Config;
+
 #[actix_web::main]
 async fn main() {
     env_logger::init();

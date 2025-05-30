@@ -10,10 +10,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use super::types::Inputs;
-use crate::errors::VectorizeError;
-use crate::transformers::providers;
-use crate::types::Model;
-use crate::types::ModelSource;
+use crate::core::errors::VectorizeError;
+use crate::core::transformers::providers;
+use crate::core::types::Model;
+use crate::core::types::ModelSource;
 
 #[async_trait]
 pub trait EmbeddingProvider {

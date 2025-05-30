@@ -1,4 +1,4 @@
-use crate::{errors::VectorizeError, transformers::types::PairedEmbeddings};
+use crate::core::{errors::VectorizeError, transformers::types::PairedEmbeddings};
 use anyhow::Result;
 use serde_json::to_string;
 use sqlx::{Pool, Postgres};

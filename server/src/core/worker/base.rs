@@ -1,9 +1,9 @@
-use crate::errors::DatabaseError;
-use crate::guc;
-use crate::transformers::types::Inputs;
-use crate::transformers::{http_handler, providers};
-use crate::types::{JobMessage, JobParams};
-use crate::worker::ops;
+use crate::core::errors::DatabaseError;
+use crate::core::guc;
+use crate::core::transformers::types::Inputs;
+use crate::core::transformers::{http_handler, providers};
+use crate::core::types::{JobMessage, JobParams};
+use crate::core::worker::ops;
 
 use log::error;
 use pgmq::{Message, PGMQueueExt};
@@ -11,9 +11,9 @@ use sqlx::{Pool, Postgres};
 use std::env;
 use tiktoken_rs::cl100k_base;
 
-use crate::types::VectorizeMeta;
+use crate::core::types::VectorizeMeta;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 // errors if input contains non-alphanumeric characters or underscore
 // in other worse - valid column names only
@@ -207,7 +207,7 @@ pub async fn execute_job(dbclient: &Pool<Postgres>, msg: Message<JobMessage>) ->
 
     let paired_embeddings = http_handler::merge_input_output(inputs, embeddings.embeddings);
     match job_params.clone().table_method {
-        crate::types::TableMethod::append => {
+        crate::core::types::TableMethod::append => {
             ops::update_embeddings(
                 dbclient,
                 &job_params.schema,
@@ -219,7 +219,7 @@ pub async fn execute_job(dbclient: &Pool<Postgres>, msg: Message<JobMessage>) ->
             )
             .await?;
         }
-        crate::types::TableMethod::join => {
+        crate::core::types::TableMethod::join => {
             ops::upsert_embedding_table(
                 dbclient,
                 &job_meta.name,

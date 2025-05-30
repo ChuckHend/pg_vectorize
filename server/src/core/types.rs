@@ -148,8 +148,8 @@ pub struct Model {
     pub name: String,
 }
 
-use serde::de::Deserializer;
 use serde::Serializer;
+use serde::de::Deserializer;
 
 pub fn string_to_model<'de, D>(deserializer: D) -> Result<Model, D::Error>
 where
@@ -168,8 +168,8 @@ where
 }
 
 use sqlx::{
-    postgres::{PgTypeInfo, PgValueRef},
     Decode, Type,
+    postgres::{PgTypeInfo, PgValueRef},
 };
 
 impl Type<sqlx::Postgres> for Model {

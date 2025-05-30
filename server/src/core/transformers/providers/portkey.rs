@@ -4,10 +4,10 @@ use super::{
     ChatMessageRequest, ChatResponse, EmbeddingProvider, GenericEmbeddingRequest,
     GenericEmbeddingResponse,
 };
-use crate::errors::VectorizeError;
-use crate::transformers::http_handler::handle_response;
-use crate::transformers::providers;
-use crate::transformers::providers::openai;
+use crate::core::errors::VectorizeError;
+use crate::core::transformers::http_handler::handle_response;
+use crate::core::transformers::providers;
+use crate::core::transformers::providers::openai;
 use async_trait::async_trait;
 use std::env;
 

@@ -7,7 +7,7 @@ use sqlx::{PgPool, prelude::FromRow};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use vectorize_core::types::{Model, model_to_string, string_to_model};
+use crate::core::types::{Model, model_to_string, string_to_model};
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema, FromRow)]
 pub struct VectorizeJob {

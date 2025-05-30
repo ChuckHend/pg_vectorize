@@ -39,7 +39,7 @@ text-splitter = "0.22.0"
 tiktoken-rs = "0.5.7"
 tokio = {version = "1.29.1", features = ["rt-multi-thread"] }
 url = "2.4.0"
-vectorize_core = { path = "../core", package = "vectorize-core" }
+vectorize_core = { path = "../server", package = "vectorize-server" }
 
 [dev-dependencies]
 pgrx-tests = "=0.13.1"

@@ -1,12 +1,12 @@
 use super::{
     ChatMessageRequest, EmbeddingProvider, GenericEmbeddingRequest, GenericEmbeddingResponse,
 };
-use crate::errors::VectorizeError;
+use crate::core::errors::VectorizeError;
 use async_trait::async_trait;
 use ollama_rs::{
+    Ollama,
     generation::completion::request::GenerationRequest,
     generation::embeddings::request::{EmbeddingsInput, GenerateEmbeddingsRequest},
-    Ollama,
 };
 use serde::{Deserialize, Serialize};
 use url::Url;

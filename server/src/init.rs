@@ -1,12 +1,12 @@
+use crate::core::query;
+use crate::core::transformers::providers::get_provider;
+use crate::core::types::JobMessage;
 use crate::errors::ServerError;
 use crate::routes::table::VectorizeJob;
 use anyhow::anyhow;
 use sqlx::PgPool;
 use std::process::Command;
 use uuid::Uuid;
-use vectorize_core::query;
-use vectorize_core::transformers::providers::get_provider;
-use vectorize_core::types::JobMessage;
 
 pub async fn init_project(pool: &PgPool, conn_string: Option<&str>) -> Result<(), ServerError> {
     // Initialize the pgmq extension

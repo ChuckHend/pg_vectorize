@@ -1,11 +1,11 @@
 pub mod pg_bgw;
 
+use crate::core::types;
+use crate::core::worker::base::execute_job;
 use anyhow::Result;
 use pgmq::{Message, PGMQueueExt};
 use pgrx::*;
 use sqlx::{Pool, Postgres};
-use vectorize_core::types;
-use vectorize_core::worker::base::execute_job;
 
 pub async fn run_worker(
     queue: PGMQueueExt,

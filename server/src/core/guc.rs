@@ -28,7 +28,7 @@ pub struct ModelGucConfig {
 
 use sqlx::PgPool;
 
-use crate::types::ModelSource;
+use crate::core::types::ModelSource;
 pub async fn get_guc(guc: VectorizeGuc, pool: &PgPool) -> Option<String> {
     let guc_name = match guc {
         VectorizeGuc::Host => "host",

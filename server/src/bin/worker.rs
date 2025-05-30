@@ -1,4 +1,4 @@
-use vectorize_core::worker::base::Config;
+use vectorize_server::core::worker::base::Config;
 use vectorize_server::executor::poll_job;
 use vectorize_server::init;
 

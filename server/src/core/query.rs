@@ -1,6 +1,6 @@
-use crate::transformers::types::Inputs;
-use crate::types::{self, JobParams};
-use anyhow::{anyhow, Result};
+use crate::core::transformers::types::Inputs;
+use crate::core::types::{self, JobParams};
+use anyhow::{Result, anyhow};
 use sqlx::error::Error;
 use sqlx::postgres::PgRow;
 use sqlx::{Postgres, Row};
