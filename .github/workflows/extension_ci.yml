@@ -91,7 +91,7 @@ jobs:
           PORTKEY_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
           PORTKEY_VIRTUAL_KEY_OPENAI: ${{ secrets.PORTKEY_VIRTUAL_KEY_OPENAI }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
         run: |
           cd ../server && cargo test -- --ignored
 
