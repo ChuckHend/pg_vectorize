@@ -78,8 +78,10 @@ mod tests {
 
     #[test]
     fn test_interpolate() {
-        env::set_var("TEST_ENV_0", "A");
-        env::set_var("TEST_ENV_1", "B");
+        unsafe {
+            env::set_var("TEST_ENV_0", "A");
+            env::set_var("TEST_ENV_1", "B");
+        }
         let base_str = "http://${TEST_ENV_0}/test/${TEST_ENV_1}";
         let interpolated = interpolate(
             base_str,
