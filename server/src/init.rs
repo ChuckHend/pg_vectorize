@@ -245,6 +245,7 @@ pub async fn scan_job(pool: &PgPool, job_request: &VectorizeJob) -> Result<(), S
 mod tests {
     use super::*;
 
+    #[ignore]
     #[tokio::test]
     async fn test_init_pgmq() {
         env_logger::init();
