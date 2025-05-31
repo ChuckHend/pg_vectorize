@@ -1,4 +1,4 @@
-CREATE TABLE vectorize.example_products (
+CREATE TABLE example_products (
     product_id SERIAL PRIMARY KEY,
     product_name TEXT NOT NULL,
     description TEXT,
@@ -7,7 +7,7 @@ CREATE TABLE vectorize.example_products (
     last_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO vectorize.example_products(product_name, description, product_category, price, last_updated_at) VALUES
+INSERT INTO example_products(product_name, description, product_category, price, last_updated_at) VALUES
 ('Pencil', 'Utensil used for writing and often works best on paper', 'stationery', 1.50, NOW()),
 ('Laptop Stand', 'Elevated platform for laptops, enhancing ergonomics', 'electronics', 35.99, NOW()),
 ('Desk Lamp', 'Illumination device for workspaces, often adjustable', 'furniture', 22.50, NOW()),
