@@ -53,7 +53,7 @@ jobs:
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           DATABASE_URL: postgresql://postgres:postgres@0.0.0.0:5432/postgres
         run: |
-          make test-integration
+          cargo test -- --ignored
       - name: debugging info
         if: failure()
         run: |
