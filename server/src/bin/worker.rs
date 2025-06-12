@@ -1,6 +1,6 @@
-use vectorize_server::core::worker::base::Config;
-use vectorize_server::executor::poll_job;
-use vectorize_server::init;
+use vectorize_core::config::Config;
+use vectorize_core::init;
+use vectorize_worker::executor::poll_job;
 
 #[tokio::main]
 async fn main() {

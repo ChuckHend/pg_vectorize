@@ -1,4 +1,4 @@
-use crate::core::errors;
+use vectorize_core::errors;
 
 use actix_web::{HttpResponse, ResponseError, http::StatusCode, web::JsonConfig};
 use anyhow::Error as AnyhowError;

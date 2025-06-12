@@ -5,9 +5,9 @@ use crate::guc::BATCH_SIZE;
 use crate::init::VECTORIZE_QUEUE;
 use pgrx::prelude::*;
 use tiktoken_rs::cl100k_base;
-use vectorize_core::core::query::{create_batches, new_rows_query_join};
-use vectorize_core::core::transformers::types::Inputs;
-use vectorize_core::core::types::{JobMessage, JobParams, TableMethod};
+use vectorize_core::query::{create_batches, new_rows_query_join};
+use vectorize_core::transformers::types::Inputs;
+use vectorize_core::types::{JobMessage, JobParams, TableMethod};
 
 // creates batches of embedding jobs
 // typically used on table init

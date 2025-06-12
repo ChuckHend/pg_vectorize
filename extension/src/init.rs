@@ -2,10 +2,10 @@ use crate::guc;
 use pgrx::prelude::*;
 
 use anyhow::{anyhow, Context, Result};
-use vectorize_core::core::guc::VectorizeGuc;
-use vectorize_core::core::query::{self, check_input};
-use vectorize_core::core::types::IndexDist;
-use vectorize_core::core::types::{JobParams, TableMethod, VECTORIZE_SCHEMA};
+use vectorize_core::guc::VectorizeGuc;
+use vectorize_core::query::{self, check_input};
+use vectorize_core::types::IndexDist;
+use vectorize_core::types::{JobParams, TableMethod, VECTORIZE_SCHEMA};
 pub static VECTORIZE_QUEUE: &str = "vectorize_jobs";
 
 pub fn init_pgmq() -> Result<()> {

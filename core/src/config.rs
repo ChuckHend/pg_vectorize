@@ -17,6 +17,7 @@ pub fn check_input(input: &str) -> Result<()> {
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub vectorize_proxy_port: u16,
     pub database_url: String,
     pub queue_name: String,
     pub embedding_svc_url: String,
@@ -33,6 +34,9 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Config {
         Config {
+            vectorize_proxy_port: from_env_default("VECTORIZE_PROXY_PORT", "5433")
+                .parse()
+                .unwrap(),
             database_url: from_env_default(
                 "DATABASE_URL",
                 "postgres://postgres:postgres@localhost:5432/postgres",

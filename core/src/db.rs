@@ -1,8 +1,10 @@
-use crate::errors::ServerError;
-use crate::routes::table::VectorizeJob;
+use crate::{errors::VectorizeError, types::VectorizeJob};
 use sqlx::{FromRow, PgPool};
 
-pub async fn get_vectorize_job(pool: &PgPool, job_name: &str) -> Result<VectorizeJob, ServerError> {
+pub async fn get_vectorize_job(
+    pool: &PgPool,
+    job_name: &str,
+) -> Result<VectorizeJob, VectorizeError> {
     // Changed return type
     let row = sqlx::query(
         "SELECT job_name, src_table, src_schema, src_column, primary_key, update_time_col, model 

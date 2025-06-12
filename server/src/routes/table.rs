@@ -1,28 +1,12 @@
 use crate::errors::ServerError;
-use crate::init;
-use crate::init::get_column_datatype;
 use actix_web::{HttpResponse, post, web};
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, prelude::FromRow};
+use sqlx::PgPool;
 use utoipa::ToSchema;
 use uuid::Uuid;
+use vectorize_core::init::{self, get_column_datatype};
 
-use crate::core::types::{Model, model_to_string, string_to_model};
-
-#[derive(Serialize, Deserialize, Debug, Clone, ToSchema, FromRow)]
-pub struct VectorizeJob {
-    pub job_name: String,
-    pub src_table: String,
-    pub src_schema: String,
-    pub src_column: String,
-    pub primary_key: String,
-    pub update_time_col: String,
-    #[serde(
-        deserialize_with = "string_to_model",
-        serialize_with = "model_to_string"
-    )]
-    pub model: Model,
-}
+use vectorize_core::types::VectorizeJob;
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct JobResponse {

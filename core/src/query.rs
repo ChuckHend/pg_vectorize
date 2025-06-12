@@ -1,5 +1,5 @@
-use crate::core::transformers::types::Inputs;
-use crate::core::types::{self, JobParams};
+use crate::transformers::types::Inputs;
+use crate::types::{self, JobParams};
 use anyhow::{Result, anyhow};
 use sqlx::error::Error;
 use sqlx::postgres::PgRow;
@@ -358,14 +358,13 @@ mod tests {
         let job_name = "another_job";
         let table_name = "another_table";
 
-        let expected = format!(
-            "
+        let expected = "
 CREATE OR REPLACE TRIGGER vectorize_update_trigger_another_job
 AFTER UPDATE ON myschema.another_table
 REFERENCING NEW TABLE AS new_table
 FOR EACH STATEMENT
 EXECUTE FUNCTION vectorize.handle_update_another_job();"
-        );
+            .to_string();
         let result = create_event_trigger(job_name, "myschema", table_name, "UPDATE");
         assert_eq!(expected, result);
     }
@@ -375,14 +374,13 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
         let job_name = "another_job";
         let table_name = "another_table";
 
-        let expected = format!(
-            "
+        let expected = "
 CREATE OR REPLACE TRIGGER vectorize_insert_trigger_another_job
 AFTER INSERT ON myschema.another_table
 REFERENCING NEW TABLE AS new_table
 FOR EACH STATEMENT
 EXECUTE FUNCTION vectorize.handle_update_another_job();"
-        );
+            .to_string();
         let result = create_event_trigger(job_name, "myschema", table_name, "INSERT");
         assert_eq!(expected, result);
     }

@@ -6,14 +6,14 @@ use pgmq::{Message, PGMQueueExt};
 use pgrx::*;
 use sqlx::{Pool, Postgres};
 use tiktoken_rs::cl100k_base;
-use vectorize_core::core::errors::DatabaseError;
-use vectorize_core::core::guc;
-use vectorize_core::core::transformers::http_handler;
-use vectorize_core::core::transformers::providers;
-use vectorize_core::core::transformers::types::Inputs;
-use vectorize_core::core::types;
-use vectorize_core::core::types::{JobMessage, JobParams, VectorizeMeta};
-use vectorize_core::core::worker::ops;
+use vectorize_core::errors::DatabaseError;
+use vectorize_core::guc;
+use vectorize_core::transformers::http_handler;
+use vectorize_core::transformers::providers;
+use vectorize_core::transformers::types::Inputs;
+use vectorize_core::types;
+use vectorize_core::types::{JobMessage, JobParams, VectorizeMeta};
+use vectorize_worker::ops;
 
 pub async fn run_worker(
     queue: PGMQueueExt,
@@ -152,7 +152,7 @@ pub async fn execute_job(dbclient: &Pool<Postgres>, msg: Message<JobMessage>) ->
 
     let paired_embeddings = http_handler::merge_input_output(inputs, embeddings.embeddings);
     match job_params.clone().table_method {
-        vectorize_core::core::types::TableMethod::append => {
+        vectorize_core::types::TableMethod::append => {
             ops::update_embeddings(
                 dbclient,
                 &job_params.schema,
@@ -164,7 +164,7 @@ pub async fn execute_job(dbclient: &Pool<Postgres>, msg: Message<JobMessage>) ->
             )
             .await?;
         }
-        vectorize_core::core::types::TableMethod::join => {
+        vectorize_core::types::TableMethod::join => {
             ops::upsert_embedding_table(
                 dbclient,
                 &job_meta.name,

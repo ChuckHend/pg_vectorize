@@ -3,8 +3,8 @@ use core::ffi::CStr;
 use pgrx::*;
 
 use crate::transformers::generic::env_interpolate_string;
-use vectorize_core::core::guc::{ModelGucConfig, VectorizeGuc};
-use vectorize_core::core::types::ModelSource;
+use vectorize_core::guc::{ModelGucConfig, VectorizeGuc};
+use vectorize_core::types::ModelSource;
 
 pub static VECTORIZE_HOST: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
 pub static VECTORIZE_DATABASE_NAME: GucSetting<Option<&CStr>> =
@@ -227,8 +227,6 @@ pub fn get_guc(guc: VectorizeGuc) -> Option<String> {
         VectorizeGuc::OpenAIKey => OPENAI_KEY.get(),
         VectorizeGuc::EmbeddingServiceUrl => EMBEDDING_SERVICE_HOST.get(),
         VectorizeGuc::OllamaServiceUrl => OLLAMA_SERVICE_HOST.get(),
-        VectorizeGuc::TemboServiceUrl => TEMBO_SERVICE_HOST.get(),
-        VectorizeGuc::TemboAIKey => TEMBO_API_KEY.get(),
         VectorizeGuc::OpenAIServiceUrl => OPENAI_BASE_URL.get(),
         VectorizeGuc::EmbeddingServiceApiKey => EMBEDDING_SERVICE_API_KEY.get(),
         VectorizeGuc::CohereApiKey => COHERE_API_KEY.get(),
@@ -266,11 +264,6 @@ pub fn get_guc_configs(model_source: &ModelSource) -> ModelGucConfig {
         ModelSource::OpenAI => ModelGucConfig {
             api_key: get_guc(VectorizeGuc::OpenAIKey),
             service_url: get_guc(VectorizeGuc::OpenAIServiceUrl),
-            virtual_key: None,
-        },
-        ModelSource::Tembo => ModelGucConfig {
-            api_key: get_guc(VectorizeGuc::TemboAIKey),
-            service_url: get_guc(VectorizeGuc::TemboServiceUrl),
             virtual_key: None,
         },
         ModelSource::SentenceTransformers => ModelGucConfig {

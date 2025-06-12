@@ -1,11 +1,12 @@
-use crate::core::query;
-use crate::core::transformers::providers::prepare_generic_embedding_request;
-use crate::{core::transformers::types::Inputs, errors::ServerError};
+use crate::errors::ServerError;
 use actix_web::{HttpResponse, get, web};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row, prelude::FromRow};
 use utoipa::ToSchema;
 use uuid::Uuid;
+use vectorize_core::query;
+use vectorize_core::transformers::providers::prepare_generic_embedding_request;
+use vectorize_core::transformers::types::Inputs;
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema, FromRow)]
 pub struct SearchRequest {
@@ -20,23 +21,27 @@ pub struct SearchResponse {
 
 #[utoipa::path(
     context_path = "/api/v1",
+    params(
+        ("job_name" = String, Query, description = "Name of the vectorize job"),
+        ("query" = String, Query, description = "Search query string")
+    ),
     responses(
         (
-            status = 200, description = "Search",
-            body = SearchResponse,
+            status = 200, description = "Search results",
+            body = Vec<serde_json::Value>,
         ),
     ),
 )]
 #[get("/search")]
 pub async fn search(
     pool: web::Data<PgPool>,
-    payload: web::Json<SearchRequest>,
+    payload: web::Query<SearchRequest>,
 ) -> Result<HttpResponse, ServerError> {
     let payload = payload.into_inner();
 
-    let vectorizejob = crate::db::get_vectorize_job(&pool, &payload.job_name).await?;
+    let vectorizejob = vectorize_core::db::get_vectorize_job(&pool, &payload.job_name).await?;
 
-    let provider = crate::core::transformers::providers::get_provider(
+    let provider = vectorize_core::transformers::providers::get_provider(
         &vectorizejob.model.source,
         None,
         None,
@@ -61,7 +66,6 @@ pub async fn search(
         3,
         None,
     );
-    log::error!("Generated query: {}", q);
     let results = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
         .fetch_all(&**pool)

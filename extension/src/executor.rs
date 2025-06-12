@@ -8,10 +8,10 @@ use sqlx::error::Error;
 use sqlx::postgres::PgRow;
 use sqlx::{Pool, Postgres, Row};
 use tiktoken_rs::cl100k_base;
-use vectorize_core::core::errors::DatabaseError;
-use vectorize_core::core::query::{check_input, create_batches, new_rows_query_join};
-use vectorize_core::core::transformers::types::Inputs;
-use vectorize_core::core::types::{JobMessage, JobParams, TableMethod};
+use vectorize_core::errors::DatabaseError;
+use vectorize_core::query::{check_input, create_batches, new_rows_query_join};
+use vectorize_core::transformers::types::Inputs;
+use vectorize_core::types::{JobMessage, JobParams, TableMethod};
 
 #[pg_extern]
 pub fn batch_texts(

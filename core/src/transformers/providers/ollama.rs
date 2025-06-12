@@ -1,7 +1,7 @@
 use super::{
     ChatMessageRequest, EmbeddingProvider, GenericEmbeddingRequest, GenericEmbeddingResponse,
 };
-use crate::core::errors::VectorizeError;
+use crate::errors::VectorizeError;
 use async_trait::async_trait;
 use ollama_rs::{
     Ollama,

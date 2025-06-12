@@ -1,3 +1,7 @@
+use sqlx::PgPool;
+
+use crate::types::ModelSource;
+
 // for handling of GUCs that can be error prone
 #[derive(Clone, Debug)]
 pub enum VectorizeGuc {
@@ -5,11 +9,9 @@ pub enum VectorizeGuc {
     DatabaseName,
     OpenAIServiceUrl,
     OpenAIKey,
-    TemboAIKey,
     EmbeddingServiceUrl,
     EmbeddingServiceApiKey,
     OllamaServiceUrl,
-    TemboServiceUrl,
     CohereApiKey,
     PortkeyApiKey,
     PortkeyVirtualKey,
@@ -26,20 +28,15 @@ pub struct ModelGucConfig {
     pub virtual_key: Option<String>,
 }
 
-use sqlx::PgPool;
-
-use crate::core::types::ModelSource;
 pub async fn get_guc(guc: VectorizeGuc, pool: &PgPool) -> Option<String> {
     let guc_name = match guc {
         VectorizeGuc::Host => "host",
         VectorizeGuc::DatabaseName => "database_name",
         VectorizeGuc::OpenAIServiceUrl => "openai_service_url",
         VectorizeGuc::OpenAIKey => "openai_key",
-        VectorizeGuc::TemboAIKey => "tembo_jwt",
         VectorizeGuc::EmbeddingServiceUrl => "embedding_service_url",
         VectorizeGuc::EmbeddingServiceApiKey => "embedding_service_api_key",
         VectorizeGuc::OllamaServiceUrl => "ollama_service_url",
-        VectorizeGuc::TemboServiceUrl => "tembo_service_url",
         VectorizeGuc::CohereApiKey => "cohere_api_key",
         VectorizeGuc::PortkeyApiKey => "portkey_api_key",
         VectorizeGuc::PortkeyVirtualKey => "portkey_virtual_key",
@@ -62,11 +59,6 @@ pub async fn get_guc_configs(model_source: &ModelSource, pool: &PgPool) -> Model
         ModelSource::OpenAI => ModelGucConfig {
             api_key: get_guc(VectorizeGuc::OpenAIKey, pool).await,
             service_url: get_guc(VectorizeGuc::OpenAIServiceUrl, pool).await,
-            virtual_key: None,
-        },
-        ModelSource::Tembo => ModelGucConfig {
-            api_key: get_guc(VectorizeGuc::TemboAIKey, pool).await,
-            service_url: get_guc(VectorizeGuc::TemboServiceUrl, pool).await,
             virtual_key: None,
         },
         ModelSource::SentenceTransformers => ModelGucConfig {

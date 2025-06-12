@@ -1,14 +1,14 @@
-use crate::core::query;
-use crate::core::transformers::providers::get_provider;
-use crate::core::types::JobMessage;
-use crate::errors::ServerError;
-use crate::routes::table::VectorizeJob;
+use crate::errors::VectorizeError;
+use crate::query;
+use crate::transformers::providers::get_provider;
+use crate::types::JobMessage;
+use crate::types::VectorizeJob;
 use anyhow::anyhow;
 use sqlx::PgPool;
 use std::process::Command;
 use uuid::Uuid;
 
-pub async fn init_project(pool: &PgPool, conn_string: Option<&str>) -> Result<(), ServerError> {
+pub async fn init_project(pool: &PgPool, conn_string: Option<&str>) -> Result<(), VectorizeError> {
     // Initialize the pgmq extension
     init_pgmq(pool, conn_string).await?;
 
@@ -30,7 +30,7 @@ pub async fn get_column_datatype(
     schema: &str,
     table: &str,
     column: &str,
-) -> Result<String, ServerError> {
+) -> Result<String, VectorizeError> {
     let row: String = sqlx::query_scalar(
         "
         SELECT data_type
@@ -47,7 +47,7 @@ pub async fn get_column_datatype(
     .fetch_one(pool)
     .await
     .map_err(|e| {
-        ServerError::InvalidRequest(format!(
+        VectorizeError::NotFound(format!(
             "schema, table or column NOT FOUND for {}.{}.{}: {}",
             schema, table, column, e
         ))
@@ -65,7 +65,7 @@ async fn pgmq_schema_exists(pool: &PgPool) -> Result<bool, sqlx::Error> {
     Ok(row)
 }
 
-pub async fn init_pgmq(pool: &PgPool, conn_string: Option<&str>) -> Result<(), ServerError> {
+pub async fn init_pgmq(pool: &PgPool, conn_string: Option<&str>) -> Result<(), VectorizeError> {
     // Check if the pgmq schema already exists
     if pgmq_schema_exists(pool).await? {
         log::info!("pgmq schema already exists, skipping initialization.");
@@ -93,7 +93,7 @@ pub async fn init_pgmq(pool: &PgPool, conn_string: Option<&str>) -> Result<(), S
                 "failed to install pgmq: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
-            return Err(ServerError::InternalError(anyhow!(
+            return Err(VectorizeError::InternalError(anyhow!(
                 "Failed to install pgmq".to_string()
             )));
         }
@@ -106,7 +106,7 @@ pub async fn init_pgmq(pool: &PgPool, conn_string: Option<&str>) -> Result<(), S
 pub async fn initialize_job(
     pool: &PgPool,
     job_request: &VectorizeJob,
-) -> Result<Uuid, ServerError> {
+) -> Result<Uuid, VectorizeError> {
     // create the job record
     let mut tx = pool.begin().await?;
     let job_id: Uuid = sqlx::query_scalar("
@@ -196,7 +196,7 @@ pub async fn initialize_job(
 }
 
 // enqueues jobs where records need embeddings computed
-pub async fn scan_job(pool: &PgPool, job_request: &VectorizeJob) -> Result<(), ServerError> {
+pub async fn scan_job(pool: &PgPool, job_request: &VectorizeJob) -> Result<(), VectorizeError> {
     let rows_for_update_query = query::new_rows_query_join(
         &job_request.job_name,
         &[job_request.src_column.clone()],

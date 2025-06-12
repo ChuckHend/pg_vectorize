@@ -4,12 +4,12 @@ use regex::Regex;
 use std::collections::HashSet;
 use std::env;
 
-use crate::core::{
+use crate::{
     transformers::types::{EmbeddingPayload, EmbeddingRequest, Inputs},
     types,
 };
 
-use crate::core::transformers::providers::openai::trim_inputs;
+use crate::transformers::providers::openai::trim_inputs;
 
 lazy_static! {
     static ref REGEX: Regex = Regex::new(r"\$\{([^}]+)\}").expect("Invalid regex");

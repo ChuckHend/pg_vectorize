@@ -4,8 +4,24 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use thiserror::Error;
+use utoipa::ToSchema;
 
 pub const VECTORIZE_SCHEMA: &str = "vectorize";
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema, FromRow)]
+pub struct VectorizeJob {
+    pub job_name: String,
+    pub src_table: String,
+    pub src_schema: String,
+    pub src_column: String,
+    pub primary_key: String,
+    pub update_time_col: String,
+    #[serde(
+        deserialize_with = "string_to_model",
+        serialize_with = "model_to_string"
+    )]
+    pub model: Model,
+}
 
 #[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -140,7 +156,7 @@ pub struct VectorizeMeta {
     pub params: serde_json::Value,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, FromRow)]
+#[derive(Clone, Debug, Deserialize, Serialize, FromRow, ToSchema)]
 pub struct Model {
     pub source: ModelSource,
     // the model's namespace + model name
@@ -192,7 +208,6 @@ impl Model {
             ModelSource::OpenAI => self.name.clone(),
             ModelSource::SentenceTransformers => self.fullname.clone(),
             ModelSource::Ollama => self.name.clone(),
-            ModelSource::Tembo => self.name.clone(),
             ModelSource::Cohere => self.name.clone(),
             ModelSource::Portkey => self.name.clone(),
             ModelSource::Voyage => self.name.clone(),
@@ -237,17 +252,10 @@ impl Model {
             .parse::<ModelSource>()
             .map_err(|_| ModelError::InvalidSource(parts[0].to_string()))?;
 
-        let name = if source == ModelSource::Tembo {
-            // removes the leading /tembo from the model name
-            parts.remove(0);
-            // all others remain the same
-            parts.join("/")
-        } else {
-            parts
-                .last()
-                .expect("expected non-empty model name")
-                .to_string()
-        };
+        let name = parts
+            .last()
+            .expect("expected non-empty model name")
+            .to_string();
 
         Ok(Self {
             source,
@@ -265,12 +273,11 @@ impl fmt::Display for Model {
 
 // model sources are places that serve models
 // each source can have its own API schema
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
 pub enum ModelSource {
     OpenAI,
     SentenceTransformers,
     Ollama,
-    Tembo,
     Cohere,
     Portkey,
     Voyage,
@@ -284,7 +291,6 @@ impl FromStr for ModelSource {
             "ollama" => Ok(ModelSource::Ollama),
             "openai" => Ok(ModelSource::OpenAI),
             "sentence-transformers" => Ok(ModelSource::SentenceTransformers),
-            "tembo" => Ok(ModelSource::Tembo),
             "cohere" => Ok(ModelSource::Cohere),
             "portkey" => Ok(ModelSource::Portkey),
             "voyage" => Ok(ModelSource::Voyage),
@@ -299,7 +305,6 @@ impl Display for ModelSource {
             ModelSource::Ollama => write!(f, "ollama"),
             ModelSource::OpenAI => write!(f, "openai"),
             ModelSource::SentenceTransformers => write!(f, "sentence-transformers"),
-            ModelSource::Tembo => write!(f, "tembo"),
             ModelSource::Cohere => write!(f, "cohere"),
             ModelSource::Portkey => write!(f, "portkey"),
             ModelSource::Voyage => write!(f, "voyage"),
@@ -313,7 +318,6 @@ impl From<String> for ModelSource {
             "ollama" => ModelSource::Ollama,
             "openai" => ModelSource::OpenAI,
             "sentence-transformers" => ModelSource::SentenceTransformers,
-            "tembo" => ModelSource::Tembo,
             "cohere" => ModelSource::Cohere,
             "portkey" => ModelSource::Portkey,
             "voyage" => ModelSource::Voyage,
@@ -345,14 +349,6 @@ mod model_tests {
         assert_eq!(model.fullname, "voyage/voyage-3-lite");
         assert_eq!(model.name, "voyage-3-lite");
         assert_eq!(model.api_name(), "voyage-3-lite");
-    }
-
-    #[test]
-    fn test_tembo_parsing() {
-        let model = Model::new("tembo/meta-llama/Meta-Llama-3-8B-Instruct").unwrap();
-        assert_eq!(model.source, ModelSource::Tembo);
-        assert_eq!(model.fullname, "meta-llama/Meta-Llama-3-8B-Instruct");
-        assert_eq!(model.name, "meta-llama/Meta-Llama-3-8B-Instruct");
     }
 
     #[test]

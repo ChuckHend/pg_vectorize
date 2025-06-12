@@ -4,11 +4,11 @@ pub mod common {
     use actix_web::test;
     use actix_web::{App, Error, dev::ServiceResponse, web};
     use rand::prelude::*;
-    use vectorize_server::init;
+    use vectorize_core::init;
     #[cfg(test)]
     pub async fn get_test_app() -> impl Service<Request, Response = ServiceResponse, Error = Error>
     {
-        let cfg = vectorize_server::config::Config::default();
+        let cfg = vectorize_core::config::Config::from_env();
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(5)
             .connect(&cfg.database_url)
@@ -25,9 +25,24 @@ pub mod common {
         .await
     }
 
+    // Initialize test environment without creating Actix test service
+    // For use with reqwest-based tests that hit a running server
+    #[cfg(test)]
+    pub async fn init_test_environment() {
+        let cfg = vectorize_core::config::Config::from_env();
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&cfg.database_url)
+            .await
+            .expect("unable to connect to postgres");
+        init::init_project(&pool, Some(&cfg.database_url))
+            .await
+            .expect("Failed to initialize project");
+    }
+
     // creates a table in the vectorize_test schema
     pub async fn create_test_table() -> String {
-        let cfg = vectorize_server::config::Config::default();
+        let cfg = vectorize_core::config::Config::from_env();
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(2)
             .connect(&cfg.database_url)
@@ -54,16 +69,18 @@ pub mod common {
         .await
         .expect("unable to create test table");
 
-        sqlx::query(
-            format!(
-                "insert into vectorize_test.{} (content, updated_at) values ('the quick brown fox jumps over the lazy dog', now());",
-                table
+        for record in ["pizza", "pencil", "airplane"] {
+            sqlx::query(
+                format!(
+                    "insert into vectorize_test.{} (content, updated_at) values ('{}', now());",
+                    table, record
+                )
+                .as_str(),
             )
-            .as_str(),
-        )
-        .execute(&pool)
-        .await
-        .expect("unable to insert test data");
+            .execute(&pool)
+            .await
+            .expect("unable to insert test data");
+        }
 
         table
     }

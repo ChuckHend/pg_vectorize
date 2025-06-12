@@ -3,10 +3,10 @@ use anyhow::{Context, Result};
 
 use pgrx::prelude::*;
 
-use vectorize_core::core::guc::ModelGucConfig;
-use vectorize_core::core::transformers::providers::get_provider;
-use vectorize_core::core::transformers::types::TransformerMetadata;
-use vectorize_core::core::types::Model;
+use vectorize_core::guc::ModelGucConfig;
+use vectorize_core::transformers::providers::get_provider;
+use vectorize_core::transformers::types::TransformerMetadata;
+use vectorize_core::types::Model;
 
 #[pg_extern]
 pub fn mod_info(model_name: &str, api_key: default!(Option<String>, "NULL")) -> pgrx::JsonB {

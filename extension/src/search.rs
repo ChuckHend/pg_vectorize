@@ -11,12 +11,12 @@ use pgrx::prelude::*;
 use pgrx::JsonB;
 use serde_json::Value;
 use std::collections::HashMap;
-use vectorize_core::core::guc::VectorizeGuc;
-use vectorize_core::core::query;
-use vectorize_core::core::query::{create_event_trigger, create_trigger_handler};
-use vectorize_core::core::transformers::providers::get_provider;
-use vectorize_core::core::transformers::providers::ollama::check_model_host;
-use vectorize_core::core::types::{self, Model, ModelSource, TableMethod, VectorizeMeta};
+use vectorize_core::guc::VectorizeGuc;
+use vectorize_core::query;
+use vectorize_core::query::{create_event_trigger, create_trigger_handler};
+use vectorize_core::transformers::providers::get_provider;
+use vectorize_core::transformers::providers::ollama::check_model_host;
+use vectorize_core::types::{self, Model, ModelSource, TableMethod, VectorizeMeta};
 
 #[allow(clippy::too_many_arguments)]
 pub fn init_table(
@@ -65,9 +65,6 @@ pub fn init_table(
                     .context("OpenAI key is required")?,
             )?;
             None
-        }
-        ModelSource::Tembo => {
-            error!("Tembo not implemented for search yet");
         }
         ModelSource::Ollama => {
             let url = match guc::get_guc(VectorizeGuc::OllamaServiceUrl) {

@@ -2,9 +2,9 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use super::{EmbeddingProvider, GenericEmbeddingRequest, GenericEmbeddingResponse};
-use crate::core::errors::VectorizeError;
-use crate::core::transformers::http_handler::handle_response;
-use crate::core::transformers::providers::openai;
+use crate::errors::VectorizeError;
+use crate::transformers::http_handler::handle_response;
+use crate::transformers::providers::openai;
 use async_trait::async_trait;
 use std::env;
 

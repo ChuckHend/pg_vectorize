@@ -2,8 +2,8 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use super::{EmbeddingProvider, GenericEmbeddingRequest, GenericEmbeddingResponse};
-use crate::core::errors::VectorizeError;
-use crate::core::transformers::http_handler::handle_response;
+use crate::errors::VectorizeError;
+use crate::transformers::http_handler::handle_response;
 use async_trait::async_trait;
 use std::env;
 

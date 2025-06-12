@@ -5,10 +5,10 @@ use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{Pool, Postgres};
 use std::env;
 use url::{ParseError, Url};
-use vectorize_core::core::guc::VectorizeGuc;
+use vectorize_core::guc::VectorizeGuc;
 
 use crate::guc;
-use vectorize_core::core::types::{self, Model};
+use vectorize_core::types::{self, Model};
 
 #[derive(Clone, Debug)]
 pub struct Config {

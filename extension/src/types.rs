@@ -1,5 +1,5 @@
 use pgrx::*;
-use vectorize_core::core::types::{
+use vectorize_core::types::{
     IndexDist as CoreIndexDist, SimilarityAlg as CoreSimilarityAlg, TableMethod as CoreTableMethod,
 };
 

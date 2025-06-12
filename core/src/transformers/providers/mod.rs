@@ -10,13 +10,13 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use super::types::Inputs;
-use crate::core::errors::VectorizeError;
-use crate::core::transformers::providers;
-use crate::core::types::Model;
-use crate::core::types::ModelSource;
+use crate::errors::VectorizeError;
+use crate::transformers::providers;
+use crate::types::Model;
+use crate::types::ModelSource;
 
 #[async_trait]
-pub trait EmbeddingProvider {
+pub trait EmbeddingProvider: Send + Sync {
     #[allow(async_fn_in_trait)]
     async fn generate_embedding<'a>(
         &self,
@@ -54,7 +54,7 @@ pub fn get_provider(
     api_key: Option<String>,
     url: Option<String>,
     virtual_key: Option<String>,
-) -> Result<Box<dyn EmbeddingProvider>, VectorizeError> {
+) -> Result<Box<dyn EmbeddingProvider + Send + Sync>, VectorizeError> {
     match model_source {
         ModelSource::OpenAI => Ok(Box::new(providers::openai::OpenAIProvider::new(
             url, api_key,
@@ -74,9 +74,6 @@ pub fn get_provider(
             providers::vector_serve::VectorServeProvider::new(url, api_key),
         )),
         ModelSource::Ollama => Ok(Box::new(providers::ollama::OllamaProvider::new(url))),
-        ModelSource::Tembo => Err(anyhow::anyhow!(
-            "Ollama/Tembo transformer not implemented yet"
-        ))?,
     }
 }
 
