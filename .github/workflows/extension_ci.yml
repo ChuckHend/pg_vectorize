@@ -45,56 +45,6 @@ jobs:
       - name: Clippy
         run: cargo clippy
 
-  test-core:
-    runs-on: ubuntu-24.04
-    services:
-      postgres:
-        image: pgvector/pgvector:0.8.0-pg17
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-      vector-serve:
-        image: ghcr.io/chuckhend/vector-serve:latest
-        ports:
-          - 3000:3000
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: "extension-test"
-          workspaces: |
-            vectorize
-          # Additional directories to cache
-          cache-directories: |
-            /home/runner/.pgrx
-      - name: Install sys dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib libopenblas-dev libreadline-dev
-      - name: Test Core
-        run: |
-          cd ../server && cargo test
-
-      - name: Test Core - Integration
-        # skip when on external forks
-        if: github.repository_owner == 'ChuckHend'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CO_API_KEY: ${{ secrets.CO_API_KEY }}
-          PORTKEY_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
-          PORTKEY_VIRTUAL_KEY_OPENAI: ${{ secrets.PORTKEY_VIRTUAL_KEY_OPENAI }}
-          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-        run: |
-          cd ../server && cargo test -- --ignored
-
   test:
     name: Run tests
     runs-on: ubuntu-latest

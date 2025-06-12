@@ -1,0 +1,61 @@
+name: Vectorize Server CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  lint:
+    name: Run linters
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust minimal nightly with clippy and rustfmt
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Cargo format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy
+
+  test-server:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install sys dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib libopenblas-dev libreadline-dev
+      - name: start containers
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+        run: |
+          docker compose -f docker-compose.server.yml up postgres -d;
+          sleep 5;
+          docker compose -f docker-compose.server.yml up vector-serve server --build -d;
+      - name: Test Core
+        run: |
+          cargo test
+      - name: Test Core - Integration
+        # skip when on external forks
+        if: github.repository_owner == 'ChuckHend'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CO_API_KEY: ${{ secrets.CO_API_KEY }}
+          PORTKEY_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
+          PORTKEY_VIRTUAL_KEY_OPENAI: ${{ secrets.PORTKEY_VIRTUAL_KEY_OPENAI }}
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          DATABASE_URL: postgresql://postgres:postgres@0.0.0.0:5432/postgres
+        run: |
+          make test-integration
+      - name: debugging info
+        if: failure()
+        run: |
+          docker compose logs
+          docker ps
