@@ -1,0 +1,15 @@
+[package]
+name = "vectorize-worker"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vectorize_core = { package = "vectorize-core", path = "../core" }
+serde = { workspace = true}
+serde_json = { workspace = true }
+tokio = { workspace = true }
+log = { workspace = true }
+sqlx = { workspace = true }
+pgmq = { workspace = true }
+anyhow = { workspace = true }
+tiktoken-rs = { workspace = true }
