@@ -12,6 +12,7 @@ path = "src/lib.rs"
 [dependencies]
 vectorize_core = { package = "vectorize-core", path = "../core" }
 vectorize_worker = { package = "vectorize-worker", path = "../worker" }
+vectorize_proxy = { package = "vectorize-proxy", path = "../proxy" }
 
 actix-cors = "0.7.1"
 actix-http = "3.11.0"

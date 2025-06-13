@@ -3982,6 +3982,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "vectorize-proxy"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "pgwire",
+ "regex",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.12",
+ "tokio",
+ "vectorize-core",
+]
+
+[[package]]
 name = "vectorize-server"
 version = "0.1.0"
 dependencies = [
@@ -4023,6 +4038,7 @@ dependencies = [
  "utoipa-swagger-ui",
  "uuid",
  "vectorize-core",
+ "vectorize-proxy",
  "vectorize-worker",
 ]
 

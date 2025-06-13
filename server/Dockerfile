@@ -9,6 +9,7 @@ WORKDIR /build
 COPY core core/
 COPY worker worker/
 COPY server server/
+COPY proxy proxy
 
 COPY Cargo.toml Cargo.lock ./
 

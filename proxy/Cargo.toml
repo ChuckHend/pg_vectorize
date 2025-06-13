@@ -1,0 +1,17 @@
+[package]
+name = "vectorize-proxy"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+vectorize_core = { package = "vectorize-core", path = "../core" }
+
+anyhow = { workspace = true }
+log = { workspace = true }
+regex = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true}
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+pgwire = { version = "0.30", features = ["server-api-aws-lc-rs"] }

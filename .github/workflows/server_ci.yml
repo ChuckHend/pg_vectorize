@@ -57,5 +57,5 @@ jobs:
       - name: debugging info
         if: failure()
         run: |
-          docker compose logs
+          docker compose -f docker-compose.server.yml logs
           docker ps

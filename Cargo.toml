@@ -3,6 +3,7 @@ members = [
     "server"
     ,"core"
     ,"worker"
+    ,"proxy"
 ]
 resolver = "2"
 exclude = [
