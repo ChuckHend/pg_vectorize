@@ -1,3 +1,4 @@
+use crate::embeddings::EmbedCall;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,12 +15,20 @@ pub enum WireProxyError {
     Timeout,
 }
 
+#[derive(Debug, Clone)]
+pub struct PreparedStatement {
+    pub statement_name: String,
+    pub sql: String,
+    pub embed_calls: Vec<EmbedCall>,
+}
+
 #[derive(Clone)]
 pub struct ProxyConfig {
     pub postgres_addr: std::net::SocketAddr,
     pub timeout: Duration,
     pub jobmap: Arc<RwLock<HashMap<String, VectorizeJob>>>,
     pub db_pool: sqlx::PgPool,
+    pub prepared_statements: Arc<RwLock<HashMap<String, PreparedStatement>>>,
 }
 
 pub const QUERY_MESSAGE: u8 = b'Q';

@@ -1,6 +1,7 @@
 use actix_cors::Cors;
 use actix_web::{App, HttpServer, middleware, web};
 use log::{error, info, warn};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
@@ -103,6 +104,7 @@ async fn start_postgres_proxy(
         timeout: Duration::from_secs(timeout),
         jobmap: Arc::new(RwLock::new(jobmap)),
         db_pool: pool.clone(),
+        prepared_statements: Arc::new(RwLock::new(HashMap::new())),
     });
 
     info!("Starting PostgreSQL proxy with enhanced wire protocol support");
