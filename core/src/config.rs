@@ -17,6 +17,7 @@ pub fn check_input(input: &str) -> Result<()> {
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    pub proxy_enabled: bool,
     pub vectorize_proxy_port: u16,
     pub database_url: String,
     pub queue_name: String,
@@ -34,6 +35,9 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Config {
         Config {
+            proxy_enabled: env::var("VECTORIZE_PROXY_ENABLED")
+                .map(|v| parse_bool_flexible(&v))
+                .unwrap_or(false),
             vectorize_proxy_port: from_env_default("VECTORIZE_PROXY_PORT", "5433")
                 .parse()
                 .unwrap(),
@@ -67,4 +71,12 @@ impl Config {
 /// source a variable from environment - use default if not exists
 pub fn from_env_default(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_owned())
+}
+
+fn parse_bool_flexible(s: &str) -> bool {
+    match s.to_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => true,
+        "false" | "0" | "no" | "off" => false,
+        _ => false, // default to false for unrecognized values
+    }
 }

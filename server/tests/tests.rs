@@ -11,6 +11,86 @@ use vectorize_server::routes::table::JobResponse;
 // easiest way is to use the docker-compose file in the root of the project
 #[ignore]
 #[tokio::test]
+async fn test_search_server() {
+    common::init_test_environment().await;
+
+    let table = common::create_test_table().await;
+
+    let job_name = format!("test_job_{}", table);
+
+    // Create a valid VectorizeJob payload
+    let payload = json!({
+        "job_name": job_name,
+        "src_table": table,
+        "src_schema": "vectorize_test",
+        "src_column": "content",
+        "primary_key": "id",
+        "update_time_col": "updated_at",
+        "model": "sentence-transformers/all-MiniLM-L6-v2"
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("http://localhost:8080/api/v1/table")
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "Response status: {:?}",
+        resp.status()
+    );
+
+    let response: JobResponse = resp.json().await.expect("Failed to parse response");
+    assert!(!response.id.is_nil(), "Job ID should not be nil");
+
+    // sleep for 2 seconds
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // test searching the job
+    // test HTTP search endpoint with query parameters
+    let resp = client
+        .get(&format!(
+            "http://0.0.0.0:8080/api/v1/search?job_name={}&query=food",
+            job_name
+        ))
+        .send()
+        .await
+        .expect("Failed to send search request");
+
+    let search_results: Vec<serde_json::Value> =
+        resp.json().await.expect("Failed to parse search response");
+
+    // Should return 3 results (number rows in table)
+    assert_eq!(search_results.len(), 3);
+
+    // First result should be pizza (highest similarity)
+    assert_eq!(search_results[0]["content"].as_str().unwrap(), "pizza");
+    assert!(search_results[0]["similarity_score"].as_f64().unwrap() > 0.6);
+
+    // test limit parameter
+    let resp = client
+        .get(&format!(
+            "http://0.0.0.0:8080/api/v1/search?job_name={}&query=writing%20utensil&limit=1",
+            job_name
+        ))
+        .send()
+        .await
+        .expect("Failed to send search request");
+
+    let search_results: Vec<serde_json::Value> =
+        resp.json().await.expect("Failed to parse search response");
+
+    assert_eq!(search_results.len(), 1);
+    assert_eq!(search_results[0]["content"].as_str().unwrap(), "pencil");
+}
+
+#[ignore]
+#[tokio::test]
 async fn test_lifecycle() {
     env_logger::init();
 
@@ -129,7 +209,7 @@ async fn test_lifecycle() {
     // assert first row is pizza
     assert_eq!(row[0].get::<String, usize>(1), "pizza");
 
-    // test prepared statemetns
+    // test prepared statements
     // Use parameter binding instead of string formatting
     // let row = sqlx::query("SELECT vectorize.embed('food'::text, $1);")
     //     .bind(&job_name)

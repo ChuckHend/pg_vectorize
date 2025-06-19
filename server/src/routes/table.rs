@@ -2,6 +2,9 @@ use crate::errors::ServerError;
 use actix_web::{HttpResponse, post, web};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use vectorize_core::init::{self, get_column_datatype};
@@ -25,6 +28,7 @@ pub struct JobResponse {
 #[post("/table")]
 pub async fn table(
     dbclient: web::Data<PgPool>,
+    jobmap: web::Data<Arc<RwLock<HashMap<String, VectorizeJob>>>>,
     payload: web::Json<VectorizeJob>,
 ) -> Result<HttpResponse, ServerError> {
     let payload = payload.into_inner();
@@ -45,6 +49,13 @@ pub async fn table(
     }
 
     let job_id = init::initialize_job(&dbclient, &payload).await?;
+
+    // Update the job cache with the new job information
+    {
+        let mut job_cache = jobmap.write().await;
+        job_cache.insert(payload.job_name.clone(), payload.clone());
+    }
+
     let resp = JobResponse { id: job_id };
     Ok(HttpResponse::Ok().json(resp))
 }

@@ -12,6 +12,7 @@ use url::Url;
 
 use vectorize_core::config::Config;
 use vectorize_core::init;
+use vectorize_core::types::VectorizeJob;
 use vectorize_proxy::{
     ProxyConfig, handle_connection_with_timeout, load_initial_job_cache,
     setup_job_change_notifications, start_cache_sync_listener,
@@ -34,11 +35,22 @@ async fn main() {
         .await
         .expect("Failed to initialize project");
 
+    // Load initial job cache and setup job change notifications
+    let jobmap = load_initial_job_cache(&pool)
+        .await
+        .expect("Failed to load initial job cache");
+    let jobmap = Arc::new(RwLock::new(jobmap));
+
+    if let Err(e) = setup_job_change_notifications(&pool).await {
+        warn!("Failed to setup job change notifications: {}", e);
+    }
+
     // Start the PostgreSQL proxy
     let proxy_pool = pool.clone();
     let proxy_cfg = cfg.clone();
+    let proxy_jobmap = Arc::clone(&jobmap);
     tokio::spawn(async move {
-        if let Err(e) = start_postgres_proxy(proxy_cfg, proxy_pool).await {
+        if let Err(e) = start_postgres_proxy(proxy_cfg, proxy_pool, proxy_jobmap).await {
             error!("Failed to start PostgreSQL proxy: {}", e);
         }
     });
@@ -67,6 +79,7 @@ async fn main() {
             .app_data(web::Data::new(cfg.clone()))
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(worker_health_for_routes.clone()))
+            .app_data(web::Data::new(jobmap.clone()))
             .configure(vectorize_server::server::route_config)
             .configure(vectorize_server::routes::health::configure_health_routes)
     })
@@ -81,6 +94,7 @@ async fn main() {
 async fn start_postgres_proxy(
     cfg: Config,
     pool: sqlx::PgPool,
+    jobmap: Arc<RwLock<HashMap<String, VectorizeJob>>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let bind_address = "0.0.0.0";
     let timeout = 30;
@@ -97,12 +111,10 @@ async fn start_postgres_proxy(
         .next()
         .ok_or("Failed to resolve PostgreSQL host address")?;
 
-    let jobmap = load_initial_job_cache(&pool).await?;
-
     let config = Arc::new(ProxyConfig {
         postgres_addr,
         timeout: Duration::from_secs(timeout),
-        jobmap: Arc::new(RwLock::new(jobmap)),
+        jobmap,
         db_pool: pool.clone(),
         prepared_statements: Arc::new(RwLock::new(HashMap::new())),
     });
@@ -110,10 +122,6 @@ async fn start_postgres_proxy(
     info!("Starting PostgreSQL proxy with enhanced wire protocol support");
     info!("Proxy listening on: {}", listen_addr);
     info!("Forwarding to PostgreSQL at: {}", postgres_addr);
-
-    if let Err(e) = setup_job_change_notifications(&pool).await {
-        warn!("Failed to setup job change notifications: {}", e);
-    }
 
     let config_for_sync = Arc::clone(&config);
     tokio::spawn(async move {
