@@ -16,12 +16,36 @@ use vectorize_core::types::VectorizeJob;
 pub struct SearchRequest {
     pub job_name: String,
     pub query: String,
+    #[serde(default = "default_window_size")]
+    pub window_size: i32,
     #[serde(default = "default_limit")]
     pub limit: i32,
+    #[serde(default = "default_rrf_k")]
+    pub rrf_k: f32,
+    #[serde(default = "default_semantic_wt")]
+    pub semantic_wt: f32,
+    #[serde(default = "default_fts_wt")]
+    pub fts_wt: f32,
+}
+
+fn default_semantic_wt() -> f32 {
+    1.0
+}
+
+fn default_fts_wt() -> f32 {
+    1.0
 }
 
 fn default_limit() -> i32 {
-    100
+    10
+}
+
+fn default_window_size() -> i32 {
+    5 * default_limit()
+}
+
+fn default_rrf_k() -> f32 {
+    60.0
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
@@ -35,6 +59,10 @@ pub struct SearchResponse {
         ("job_name" = String, Query, description = "Name of the vectorize job"),
         ("query" = String, Query, description = "Search query string"),
         ("limit" = Option<i64>, Query, description = "Optional limit on the number of results"),
+        ("window_size" = Option<i64>, Query, description = "Optional window size (inner limits) for hybrid search"),
+        ("rrf_k" = Option<i64>, Query, description = "Optional RRF k parameter for hybrid search"),
+        ("semantic_wt" = Option<f32>, Query, description = "Optional weight for semantic search (default: 1.0)"),
+        ("fts_wt" = Option<f32>, Query, description = "Optional weight for full-text search (default: 1.0)"),
     ),
     responses(
         (
@@ -50,6 +78,7 @@ pub async fn search(
     payload: web::Query<SearchRequest>,
 ) -> Result<HttpResponse, ServerError> {
     let payload = payload.into_inner();
+    query::check_input(&payload.job_name)?;
 
     // Try to get job info from cache first, fallback to database
     let vectorizejob = {
@@ -75,24 +104,29 @@ pub async fn search(
 
     let input = Inputs {
         record_id: "".to_string(),
-        inputs: payload.query,
+        inputs: payload.query.clone(),
         token_estimate: 0,
     };
 
     let embedding_request = prepare_generic_embedding_request(&vectorizejob.model, &[input]);
     let embeddings = provider.generate_embedding(&embedding_request).await?;
 
-    let q = query::join_table_cosine_similarity(
+    let q = query::hybrid_search_query(
         &payload.job_name,
         &vectorizejob.src_schema,
         &vectorizejob.src_table,
         &vectorizejob.primary_key,
         &["*".to_string()],
+        payload.window_size,
         payload.limit,
-        None,
+        payload.rrf_k,
+        payload.semantic_wt,
+        payload.fts_wt,
     );
+
     let results = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
+        .bind(&payload.query)
         .fetch_all(&**pool)
         .await?;
 

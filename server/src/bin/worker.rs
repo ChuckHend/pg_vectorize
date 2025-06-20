@@ -29,7 +29,7 @@ async fn main() {
             }
             Ok(None) => {
                 // no messages, small wait
-                log::info!(
+                log::debug!(
                     "No messages in queue, waiting for {} seconds",
                     cfg.poll_interval
                 );

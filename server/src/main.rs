@@ -49,11 +49,13 @@ async fn main() {
     let proxy_pool = pool.clone();
     let proxy_cfg = cfg.clone();
     let proxy_jobmap = Arc::clone(&jobmap);
-    tokio::spawn(async move {
-        if let Err(e) = start_postgres_proxy(proxy_cfg, proxy_pool, proxy_jobmap).await {
-            error!("Failed to start PostgreSQL proxy: {}", e);
-        }
-    });
+    if cfg.proxy_enabled {
+        tokio::spawn(async move {
+            if let Err(e) = start_postgres_proxy(proxy_cfg, proxy_pool, proxy_jobmap).await {
+                error!("Failed to start PostgreSQL proxy: {}", e);
+            }
+        });
+    }
 
     // Start the vectorize worker with health monitoring
     let worker_pool = pool.clone();

@@ -442,6 +442,74 @@ fn prepare_filter(filter: &str, pkey: &str) -> String {
     format!("AND {wc}")
 }
 
+pub fn hybrid_search_query(
+    job_name: &str,
+    src_schema: &str,
+    src_table: &str,
+    join_key: &str,
+    return_columns: &[String],
+    window_size: i32,
+    limit: i32,
+    rrf_k: f32,
+    semantic_weight: f32,
+    fts_weight: f32,
+) -> String {
+    let cols = &return_columns
+        .iter()
+        .map(|s| format!("t0.{}", s))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    format!(
+        "
+    SELECT to_jsonb(t) as results 
+    FROM (
+        SELECT {cols}, t.rrf_score, t.semantic_rank, t.fts_rank
+        FROM (
+            SELECT
+                COALESCE(s.{join_key}, f.{join_key}) as {join_key},
+                s.semantic_rank,
+                f.fts_rank,
+                (
+                    {semantic_weight}/({k} + COALESCE(s.semantic_rank, GREATEST(f.max_fts_rank, s.max_semantic_rank) + 1)) + 
+                    {fts_weight}/({k} + COALESCE(f.fts_rank, GREATEST(f.max_fts_rank, s.max_semantic_rank) + 1))
+                ) as rrf_score
+            FROM (
+                SELECT
+                    {join_key},
+                    ROW_NUMBER() OVER (ORDER BY embeddings <=> $1::vector) as semantic_rank,
+                    COUNT(*) OVER () as max_semantic_rank
+                FROM vectorize._embeddings_{job_name}
+                ORDER BY embeddings <=> $1::vector
+                LIMIT {window_size}
+            ) s
+            FULL OUTER JOIN (
+                SELECT
+                    {join_key},
+                    ROW_NUMBER() OVER (ORDER BY ts_rank_cd(search_tokens, query) DESC) as fts_rank,
+                    COUNT(*) OVER () as max_fts_rank
+                FROM vectorize._search_tokens_{job_name}, plainto_tsquery('english', $2) as query
+                WHERE search_tokens @@ query
+                ORDER BY ts_rank_cd(search_tokens, query) DESC 
+                LIMIT {window_size}
+            ) f ON s.{join_key} = f.{join_key}
+        ) t
+        INNER JOIN {src_schema}.{src_table} t0 ON t0.{join_key} = t.{join_key}
+        ORDER BY t.rrf_score DESC
+        LIMIT {limit}
+    ) t",
+        job_name = job_name,
+        src_schema = src_schema,
+        src_table = src_table,
+        join_key = join_key,
+        semantic_weight = semantic_weight,
+        fts_weight = fts_weight,
+        window_size = window_size,
+        limit = limit,
+        cols = cols,
+        k = rrf_k
+    )
+}
 #[cfg(test)]
 mod tests {
     use super::*;
