@@ -134,22 +134,34 @@ pub async fn initialize_job(
     let provider = get_provider(&job_request.model.source, None, None, None)?;
     let model_dim = provider.model_dim(&job_request.model.api_name()).await?;
 
+    let pkey_dtype = get_column_datatype(
+        pool,
+        &job_request.src_schema,
+        &job_request.src_table,
+        &job_request.primary_key,
+    )
+    .await?;
+
     // create embeddings table and views
     let col_type = format!("vector({})", model_dim);
-    let create_query = query::create_embedding_table(
+    let create_embedding_table_query = query::create_embedding_table(
         job_request.job_name.as_str(),
         &job_request.primary_key,
-        &get_column_datatype(
-            pool,
-            &job_request.src_schema,
-            &job_request.src_table,
-            &job_request.primary_key,
-        )
-        .await?,
+        &pkey_dtype,
         &col_type,
         &job_request.src_schema,
         &job_request.src_table,
     );
+
+    // create search tokens table
+    let create_search_tokens_table_query = query::create_search_tokens_table(
+        job_request.job_name.as_str(),
+        &job_request.primary_key,
+        &pkey_dtype,
+        &job_request.src_schema,
+        &job_request.src_table,
+    );
+
     let view_query = query::create_project_view(
         &job_request.job_name,
         job_request.src_schema.as_str(),
@@ -158,15 +170,26 @@ pub async fn initialize_job(
     );
 
     let embeddings_table = format!("_embeddings_{}", job_request.job_name);
-    let index_query = query::create_hnsw_cosine_index(
+    let embedding_index_query = query::create_hnsw_cosine_index(
         &job_request.job_name,
         "vectorize",
         &embeddings_table,
         "embeddings",
     );
-    sqlx::query(&create_query).execute(&mut *tx).await?;
+
+    let fts_index_query = query::create_fts_index_query(&job_request.job_name, "GIN");
+
+    sqlx::query(&create_embedding_table_query)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(&create_search_tokens_table_query)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query(&view_query).execute(&mut *tx).await?;
-    sqlx::query(&index_query).execute(&mut *tx).await?;
+    sqlx::query(&embedding_index_query)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(&fts_index_query).execute(&mut *tx).await?;
 
     // create triggers on the source table
     let trigger_handler =
@@ -183,6 +206,16 @@ pub async fn initialize_job(
         &job_request.src_table,
         "UPDATE",
     );
+    let search_token_trigger_queries = query::update_search_tokens_trigger_queries(
+        &job_request.job_name,
+        &job_request.primary_key,
+        &job_request.src_schema,
+        &job_request.src_table,
+        &job_request.src_column,
+    );
+    for q in search_token_trigger_queries {
+        sqlx::query(&q).execute(&mut *tx).await?;
+    }
     sqlx::query(&trigger_handler).execute(&mut *tx).await?;
     sqlx::query(&insert_trigger).execute(&mut *tx).await?;
     sqlx::query(&update_trigger).execute(&mut *tx).await?;
@@ -191,6 +224,26 @@ pub async fn initialize_job(
     // finally, enqueue pgmq job
     // previous tx needs to be committed before we can enqueue the job
     scan_job(pool, job_request).await?;
+
+    // trigger creation of all the tsvectors synchronously
+    let initial_update_query = format!(
+        "
+        INSERT INTO vectorize._search_tokens_{job_name} ({join_key}, search_tokens)
+        SELECT 
+            {join_key}, 
+            to_tsvector('english', COALESCE({src_column}, ''))
+        FROM {src_schema}.{src_table}
+        ON CONFLICT ({join_key}) DO UPDATE SET
+            search_tokens = EXCLUDED.search_tokens,
+            updated_at = NOW();
+    ",
+        src_schema = job_request.src_schema,
+        src_table = job_request.src_table,
+        src_column = job_request.src_column,
+        join_key = job_request.primary_key,
+        job_name = job_request.job_name
+    );
+    sqlx::query(&initial_update_query).execute(pool).await?;
 
     Ok(job_id)
 }
