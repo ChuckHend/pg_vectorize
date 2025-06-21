@@ -464,23 +464,37 @@ pub fn hybrid_search_query(
         "
     SELECT to_jsonb(t) as results 
     FROM (
-        SELECT {cols}, t.rrf_score, t.semantic_rank, t.fts_rank
+        SELECT {cols}, t.rrf_score, t.semantic_rank, t.fts_rank, t.similarity_score
         FROM (
             SELECT
                 COALESCE(s.{join_key}, f.{join_key}) as {join_key},
                 s.semantic_rank,
+                s.similarity_score,
                 f.fts_rank,
                 (
-                    {semantic_weight}/({k} + COALESCE(s.semantic_rank, GREATEST(f.max_fts_rank, s.max_semantic_rank) + 1)) + 
-                    {fts_weight}/({k} + COALESCE(f.fts_rank, GREATEST(f.max_fts_rank, s.max_semantic_rank) + 1))
+                    CASE
+                        WHEN s.semantic_rank IS NOT NULL THEN {semantic_weight}::float/({k} + s.semantic_rank)
+                        ELSE 0
+                    END +
+                    CASE
+                        WHEN f.fts_rank IS NOT NULL THEN {fts_weight}::float/({k} + f.fts_rank)
+                        ELSE 0
+                    END
                 ) as rrf_score
             FROM (
                 SELECT
                     {join_key},
-                    ROW_NUMBER() OVER (ORDER BY embeddings <=> $1::vector) as semantic_rank,
-                    COUNT(*) OVER () as max_semantic_rank
-                FROM vectorize._embeddings_{job_name}
-                ORDER BY embeddings <=> $1::vector
+                    distance,
+                    ROW_NUMBER() OVER (ORDER BY distance) as semantic_rank,
+                    COUNT(*) OVER () as max_semantic_rank,
+                    1 - distance as similarity_score
+                FROM (
+                    SELECT
+                        {join_key},
+                        embeddings <=> $1::vector as distance
+                    FROM vectorize._embeddings_{job_name}
+                ) sub
+                ORDER BY distance
                 LIMIT {window_size}
             ) s
             FULL OUTER JOIN (

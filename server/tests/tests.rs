@@ -65,9 +65,8 @@ async fn test_search_server() {
     let search_results: Vec<serde_json::Value> =
         resp.json().await.expect("Failed to parse search response");
 
-    // Should return 3 results (number rows in table)
+    // 3 results (number rows in table)
     assert_eq!(search_results.len(), 3);
-
     // First result should be pizza (highest similarity)
     assert_eq!(search_results[0]["content"].as_str().unwrap(), "pizza");
     assert!(search_results[0]["similarity_score"].as_f64().unwrap() > 0.6);
