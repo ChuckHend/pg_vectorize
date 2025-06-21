@@ -121,7 +121,6 @@ async fn start_postgres_proxy(
         prepared_statements: Arc::new(RwLock::new(HashMap::new())),
     });
 
-    info!("Starting PostgreSQL proxy with enhanced wire protocol support");
     info!("Proxy listening on: {}", listen_addr);
     info!("Forwarding to PostgreSQL at: {}", postgres_addr);
 

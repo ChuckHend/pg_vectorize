@@ -35,6 +35,7 @@ jobs:
       - name: start containers
         env:
           DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
+          VECTORIZE_PROXY_ENABLED: 1
         run: |
           docker compose -f docker-compose.server.yml up postgres -d;
           sleep 5;
@@ -52,7 +53,6 @@ jobs:
           PORTKEY_VIRTUAL_KEY_OPENAI: ${{ secrets.PORTKEY_VIRTUAL_KEY_OPENAI }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           DATABASE_URL: postgresql://postgres:postgres@0.0.0.0:5432/postgres
-          VECTORIZE_PROXY_ENABLED: 1
         run: |
           cargo test -- --ignored
       - name: debugging info
