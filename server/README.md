@@ -116,4 +116,4 @@ LIMIT 2;"
           8 | Plant Pot        | Container for holding plants, often with drainage | garden           | 12.00 | 2025-06-25 20:27:07.725765+00 | 0.46105278002586925
          35 | Gardening Gloves | Handwear for protection during gardening tasks    | garden           |  8.00 | 2025-06-25 20:27:07.725765+00 |  0.2909192990160845
 (2 rows)
-(3 rows)
+```
