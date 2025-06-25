@@ -121,7 +121,7 @@ pub fn update_search_tokens_trigger_queries(
     );
     let apply_trigger = format!(
         "
-        CREATE TRIGGER {job_name}_search_tokens_trigger
+        CREATE OR REPLACE TRIGGER {job_name}_search_tokens_trigger
         AFTER INSERT OR UPDATE OR DELETE ON {src_schema}.{src_table}
         FOR EACH ROW
         EXECUTE FUNCTION {trigger_fn_name}();"

@@ -35,7 +35,7 @@ services:
     environment:
         <<: *default-env
         RUST_LOG: debug
-        VECTORIZE_PROXY_ENABLED: ${VECTORIZE_PROXY_ENABLED}
+        VECTORIZE_PROXY_ENABLED: ${VECTORIZE_PROXY_ENABLED:-1}
     command: vectorize-server
   vector-serve:
     restart: always

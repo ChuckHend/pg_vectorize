@@ -40,7 +40,11 @@ pub async fn table(
         &payload.src_table,
         &payload.update_time_col,
     )
-    .await?;
+    .await
+    .map_err(|e| match e {
+        vectorize_core::errors::VectorizeError::NotFound(msg) => ServerError::NotFoundError(msg),
+        _ => ServerError::from(e),
+    })?;
     if datatype != "timestamp with time zone" {
         return Err(ServerError::InvalidRequest(format!(
             "Column {} in table {}.{} must be of type 'timestamp with time zone'",
