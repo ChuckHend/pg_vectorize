@@ -23,3 +23,5 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 COPY --from=builder /build/target/release/vectorize-server /usr/local/bin/vectorize-server
+
+CMD ["vectorize-server"]
