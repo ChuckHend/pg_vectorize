@@ -39,10 +39,9 @@ pub async fn start_vectorize_worker_with_monitoring(
                 if restart_count >= max_restarts {
                     error!("Max restart attempts ({max_restarts}) reached, giving up");
                     health_monitor.set_status(WorkerStatus::Dead).await;
-                    return Err(format!(
-                        "Worker failed permanently after {max_restarts} restarts"
-                    )
-                    .into());
+                    return Err(
+                        format!("Worker failed permanently after {max_restarts} restarts").into(),
+                    );
                 }
 
                 warn!(

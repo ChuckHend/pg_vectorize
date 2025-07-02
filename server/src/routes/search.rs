@@ -140,8 +140,6 @@ pub async fn search(
         &payload.filters,
     );
 
-    log::info!("Query: {q}");
-
     let mut prepared_query = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
         .bind(&payload.query);

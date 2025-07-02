@@ -42,6 +42,7 @@ impl<'de> serde::Deserialize<'de> for FilterValue {
         }
 
         // Fall back to string
+
         Ok(FilterValue::String(s))
     }
 }
@@ -51,7 +52,6 @@ impl FilterValue {
         &'q self,
         query: sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>,
     ) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
-        log::error!("Binding filter value: {self:?}");
         match self {
             FilterValue::String(s) => query.bind(s),
             FilterValue::Integer(i) => query.bind(*i),

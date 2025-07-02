@@ -39,9 +39,7 @@ pub async fn poll_job(
                 log::info!("Successfully processed job: {job_name}");
             }
             Err(e) => {
-                log::error!(
-                    "Error processing job: {job_name}, msg_id: {msg_id}, error: {e}"
-                );
+                log::error!("Error processing job: {job_name}, msg_id: {msg_id}, error: {e}");
                 Err(e)?;
             }
         }

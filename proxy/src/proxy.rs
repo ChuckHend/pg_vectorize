@@ -100,9 +100,7 @@ where
         }
     }
 
-    info!(
-        "Enhanced proxy stream closed: {total_bytes} bytes transferred"
-    );
+    info!("Enhanced proxy stream closed: {total_bytes} bytes transferred");
     Ok(())
 }
 
@@ -128,8 +126,6 @@ where
         writer.flush().await?;
     }
 
-    info!(
-        "Standard proxy stream closed: {total_bytes} bytes transferred"
-    );
+    info!("Standard proxy stream closed: {total_bytes} bytes transferred");
     Ok(())
 }

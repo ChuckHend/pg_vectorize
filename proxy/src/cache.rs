@@ -66,9 +66,7 @@ pub async fn start_cache_sync_listener(
         match try_listen_for_changes(&config).await {
             Ok(_) => retry_delay = Duration::from_secs(1),
             Err(e) => {
-                error!(
-                    "Cache sync listener error: {e}. Retrying in {retry_delay:?}"
-                );
+                error!("Cache sync listener error: {e}. Retrying in {retry_delay:?}");
                 tokio::time::sleep(retry_delay).await;
                 retry_delay = std::cmp::min(retry_delay * 2, max_retry_delay);
             }

@@ -224,9 +224,7 @@ async fn test_lifecycle() {
 
     // test searching the job
     // test HTTP search endpoint with query parameters
-    let search_url = format!(
-        "http://0.0.0.0:8080/api/v1/search?job_name={job_name}&query=food"
-    );
+    let search_url = format!("http://0.0.0.0:8080/api/v1/search?job_name={job_name}&query=food");
     let resp = client
         .get(&search_url)
         .send()
