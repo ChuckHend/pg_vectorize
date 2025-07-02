@@ -26,6 +26,8 @@ pub struct SearchRequest {
     pub semantic_wt: f32,
     #[serde(default = "default_fts_wt")]
     pub fts_wt: f32,
+    #[serde(flatten, default)]
+    pub filters: HashMap<String, query::FilterValue>,
 }
 
 fn default_semantic_wt() -> f32 {
@@ -63,6 +65,7 @@ pub struct SearchResponse {
         ("rrf_k" = Option<i64>, Query, description = "Optional RRF k parameter for hybrid search"),
         ("semantic_wt" = Option<f32>, Query, description = "Optional weight for semantic search (default: 1.0)"),
         ("fts_wt" = Option<f32>, Query, description = "Optional weight for full-text search (default: 1.0)"),
+        ("filters" = Option<HashMap<String, String>>, Query, description = "Optional filters for the search"),
     ),
     responses(
         (
@@ -79,6 +82,18 @@ pub async fn search(
 ) -> Result<HttpResponse, ServerError> {
     let payload = payload.into_inner();
     query::check_input(&payload.job_name)?;
+
+    // check the filters are valid if they exist and create a SQL string for them
+    if !payload.filters.is_empty() {
+        for (key, value) in &payload.filters {
+            // validate key and value
+            query::check_input(key)?;
+            if let query::FilterValue::String(value) = value {
+                // only need to check the value if it is a raw string
+                query::check_input(value)?;
+            }
+        }
+    }
 
     // Try to get job info from cache first, fallback to database
     let vectorizejob = {
@@ -122,13 +137,21 @@ pub async fn search(
         payload.rrf_k,
         payload.semantic_wt,
         payload.fts_wt,
+        &payload.filters,
     );
 
-    let results = sqlx::query(&q)
+    log::info!("Query: {}", q);
+
+    let mut prepared_query = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
-        .bind(&payload.query)
-        .fetch_all(&**pool)
-        .await?;
+        .bind(&payload.query);
+
+    // bind filter values in the same order they were processed in hybrid_search_query
+    for (_column, value) in &payload.filters {
+        prepared_query = value.bind_to_query(prepared_query);
+    }
+
+    let results = prepared_query.fetch_all(&**pool).await?;
 
     let json_results: Vec<serde_json::Value> = results
         .iter()

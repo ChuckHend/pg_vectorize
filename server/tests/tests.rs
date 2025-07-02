@@ -4,9 +4,10 @@ use pgvector::Vector;
 use serde_json::json;
 use sqlx::Row;
 
+use rand::prelude::*;
 use util::common;
+use vectorize_core::init::exec_psql;
 use vectorize_server::routes::table::JobResponse;
-
 // these tests require the following main server, vector-serve, and Postgres to be running
 // easiest way is to use the docker-compose file in the root of the project
 #[ignore]
@@ -86,6 +87,78 @@ async fn test_search_server() {
 
     assert_eq!(search_results.len(), 1);
     assert_eq!(search_results[0]["content"].as_str().unwrap(), "pencil");
+}
+
+#[ignore]
+#[tokio::test]
+async fn test_search_filters() {
+    env_logger::init();
+    let mut rng = rand::rng();
+    let test_num = rng.random_range(1..100000);
+    let cfg = vectorize_core::config::Config::from_env();
+    let sql = std::fs::read_to_string("sql/example.sql").unwrap();
+    let _sql_exec = exec_psql(&cfg.database_url, &sql);
+
+    let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
+    // test table
+    let table = format!("test_filter_{test_num}");
+    let create_sql =
+        format!("CREATE TABLE public.{table} (LIKE public.my_products INCLUDING ALL);");
+    let insert_sql = format!("INSERT INTO public.{table} SELECT * FROM public.my_products;");
+
+    sqlx::query(&&create_sql).execute(&pool).await.unwrap();
+    sqlx::query(&&insert_sql).execute(&pool).await.unwrap();
+
+    // initialize search job
+    let job_name = format!("test_filter_{}", test_num);
+    let payload = json!({
+        "job_name": job_name,
+        "src_table": table,
+        "src_schema": "public",
+        "src_column": "description",
+        "primary_key": "product_id",
+        "update_time_col": "updated_at",
+        "model": "sentence-transformers/all-MiniLM-L6-v2"
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("http://localhost:8080/api/v1/table")
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "Response status: {:?}",
+        resp.status()
+    );
+
+    // filter a query by product_category
+    let params = format!("job_name={job_name}&query=pen&product_category=electronics",);
+    let search_results = common::search_with_retry(&params, 9).await.unwrap();
+
+    assert_eq!(search_results.len(), 9);
+    assert!(search_results[0]["fts_rank"].is_null());
+    for result in search_results {
+        assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
+    }
+
+    // filter by price
+    let params = format!("job_name={job_name}&query=electronics&price=25");
+    let search_results = common::search_with_retry(&params, 2).await.unwrap();
+    assert_eq!(search_results.len(), 2);
+    assert_eq!(
+        search_results[0]["product_name"].as_str().unwrap(),
+        "Wireless Mouse"
+    );
+    assert_eq!(
+        search_results[1]["product_name"].as_str().unwrap(),
+        "Alarm Clock"
+    );
 }
 
 #[ignore]

@@ -1,13 +1,65 @@
 use crate::transformers::types::Inputs;
 use crate::types::{self, JobParams};
 use anyhow::{Result, anyhow};
+use serde::Serialize;
 use sqlx::error::Error;
 use sqlx::postgres::PgRow;
 use sqlx::{Postgres, Row};
+use std::collections::HashMap;
 use tiktoken_rs::cl100k_base;
-
 pub const VECTORIZE_SCHEMA: &str = "vectorize";
 static TRIGGER_FN_PREFIX: &str = "vectorize.handle_update_";
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum FilterValue {
+    String(String),
+    Integer(i64),
+    Float(f64),
+    Boolean(bool),
+}
+
+impl<'de> serde::Deserialize<'de> for FilterValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+
+        // Try to parse as boolean first
+        if let Ok(b) = s.parse::<bool>() {
+            return Ok(FilterValue::Boolean(b));
+        }
+
+        // Try to parse as integer
+        if let Ok(i) = s.parse::<i64>() {
+            return Ok(FilterValue::Integer(i));
+        }
+
+        // Try to parse as float
+        if let Ok(f) = s.parse::<f64>() {
+            return Ok(FilterValue::Float(f));
+        }
+
+        // Fall back to string
+        Ok(FilterValue::String(s))
+    }
+}
+
+impl FilterValue {
+    pub fn bind_to_query<'q>(
+        &'q self,
+        query: sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>,
+    ) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
+        log::error!("Binding filter value: {:?}", self);
+        match self {
+            FilterValue::String(s) => query.bind(s),
+            FilterValue::Integer(i) => query.bind(*i),
+            FilterValue::Float(f) => query.bind(*f),
+            FilterValue::Boolean(b) => query.bind(*b),
+        }
+    }
+}
 
 // errors if input contains non-alphanumeric characters or underscore
 // in other worse - valid column names only
@@ -453,12 +505,21 @@ pub fn hybrid_search_query(
     rrf_k: f32,
     semantic_weight: f32,
     fts_weight: f32,
+    filters: &HashMap<String, FilterValue>,
 ) -> String {
     let cols = &return_columns
         .iter()
         .map(|s| format!("t0.{}", s))
         .collect::<Vec<_>>()
         .join(",");
+
+    let mut bind_value_counter: i16 = 3;
+    let mut where_filter = "WHERE 1=1".to_string();
+    for (column, _value) in filters {
+        let filt = format!(" AND t0.\"{column}\" = ${bind_value_counter}");
+        where_filter.push_str(&filt);
+        bind_value_counter += 1;
+    }
 
     format!(
         "
@@ -509,6 +570,7 @@ pub fn hybrid_search_query(
             ) f ON s.{join_key} = f.{join_key}
         ) t
         INNER JOIN {src_schema}.{src_table} t0 ON t0.{join_key} = t.{join_key}
+        {where_filter}
         ORDER BY t.rrf_score DESC
         LIMIT {limit}
     ) t",

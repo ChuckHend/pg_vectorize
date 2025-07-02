@@ -82,24 +82,27 @@ pub async fn init_pgmq(pool: &PgPool, conn_string: Option<&str>) -> Result<(), V
     let sql_content = response.text().await?;
 
     if let Some(url) = conn_string {
-        let output = Command::new("psql")
-            .arg(url)
-            .arg("-c")
-            .arg(sql_content)
-            .output()
-            .unwrap();
-        if !output.status.success() {
-            log::error!(
-                "failed to install pgmq: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-            return Err(VectorizeError::InternalError(anyhow!(
-                "Failed to install pgmq".to_string()
-            )));
-        }
-        log::info!("{}", String::from_utf8_lossy(&output.stdout));
+        exec_psql(url, &sql_content)?;
     }
+    Ok(())
+}
 
+pub fn exec_psql(conn_string: &str, sql_content: &str) -> Result<(), VectorizeError> {
+    let output = Command::new("psql")
+        .arg(conn_string)
+        .arg("-c")
+        .arg(sql_content)
+        .output()
+        .unwrap();
+    if !output.status.success() {
+        log::error!(
+            "failed to execute SQL: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return Err(VectorizeError::InternalError(anyhow!(
+            "Failed to execute SQL".to_string()
+        )));
+    }
     Ok(())
 }
 

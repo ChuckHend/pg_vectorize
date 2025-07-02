@@ -5,7 +5,9 @@ pub mod common {
     use actix_web::{App, Error, dev::ServiceResponse, web};
     use rand::prelude::*;
     use vectorize_core::init;
+
     #[cfg(test)]
+    #[allow(dead_code)]
     pub async fn get_test_app() -> impl Service<Request, Response = ServiceResponse, Error = Error>
     {
         let cfg = vectorize_core::config::Config::from_env();
@@ -38,6 +40,49 @@ pub mod common {
         init::init_project(&pool, Some(&cfg.database_url))
             .await
             .expect("Failed to initialize project");
+    }
+
+    // Helper function to perform search requests with retry logic
+    #[cfg(test)]
+    pub async fn search_with_retry(
+        params: &str,
+        num_expected: usize,
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        let client = reqwest::Client::new();
+        let search_url = format!("http://0.0.0.0:8080/api/v1/search?{}", params);
+        println!("Search URL: {}", search_url);
+
+        let start_time = std::time::Instant::now();
+        let timeout_duration = std::time::Duration::from_secs(10);
+        let retry_interval = std::time::Duration::from_secs(1);
+
+        loop {
+            let resp = client.get(&search_url).send().await?;
+
+            if resp.status().is_success() {
+                let search_results: Vec<serde_json::Value> = resp.json().await?;
+                // Check if we have the expected number of results
+                if search_results.len() == num_expected {
+                    return Ok(search_results);
+                } else {
+                    // Log a warning if the number of results is not as expected
+                    println!(
+                        "Expected {} results, but got {}. Retrying...",
+                        num_expected,
+                        search_results.len()
+                    );
+                }
+            }
+
+            // Check if we've exceeded the timeout
+            if start_time.elapsed() >= timeout_duration {
+                // Return empty results if timeout is reached
+                panic!("Search request timed out after 10 seconds");
+            }
+
+            // Wait before retrying
+            tokio::time::sleep(retry_interval).await;
+        }
     }
 
     // creates a table in the vectorize_test schema
