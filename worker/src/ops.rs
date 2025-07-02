@@ -34,9 +34,7 @@ fn build_upsert_query(
 ) -> (String, Vec<(String, String)>) {
     let mut query = format!(
         "
-        INSERT INTO {schema}._embeddings_{project} ({join_key}, embeddings) VALUES",
-        schema = schema,
-        join_key = pkey,
+        INSERT INTO {schema}._embeddings_{project} ({pkey}, embeddings) VALUES",
     );
     let mut bindings: Vec<(String, String)> = Vec::new();
 
@@ -56,9 +54,8 @@ fn build_upsert_query(
         bindings.push((pair.primary_key, embedding));
     }
     let upsert = format!(
-        " ON CONFLICT ({join_key})
-        DO UPDATE SET embeddings = EXCLUDED.embeddings, updated_at = NOW();",
-        join_key = pkey
+        " ON CONFLICT ({pkey})
+        DO UPDATE SET embeddings = EXCLUDED.embeddings, updated_at = NOW();"
     );
     query.push_str(&upsert);
     (query, bindings)

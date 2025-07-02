@@ -75,7 +75,7 @@ impl EmbeddingProvider for VectorServeProvider {
                 .header("Content-Type", "application/json")
                 .json(&payload_val);
             if let Some(key) = &self.api_key {
-                req = req.header("Authorization", format!("Bearer {}", key));
+                req = req.header("Authorization", format!("Bearer {key}"));
             }
             let response = req.send().await?;
             let embeddings =
@@ -94,7 +94,7 @@ impl EmbeddingProvider for VectorServeProvider {
             .header("Accept", "application/json")
             .header("Content-Type", "application/json");
         if let Some(key) = &self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
+            req = req.header("Authorization", format!("Bearer {key}"));
         }
         let response = req.send().await?;
         let model_info = handle_response::<ModelInfo>(response, "model_info").await?;

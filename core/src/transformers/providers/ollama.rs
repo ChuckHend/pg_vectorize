@@ -26,7 +26,7 @@ struct ModelInfo {
 impl OllamaProvider {
     pub fn new(url: Option<String>) -> Self {
         let url_in = url.unwrap_or_else(|| OLLAMA_BASE_URL.to_string());
-        let parsed_url = Url::parse(&url_in).unwrap_or_else(|_| panic!("invalid url: {}", url_in));
+        let parsed_url = Url::parse(&url_in).unwrap_or_else(|_| panic!("invalid url: {url_in}"));
         let instance = Ollama::new(
             format!(
                 "{}://{}",
@@ -95,13 +95,13 @@ pub fn check_model_host(url: &str) -> Result<String, String> {
         .enable_io()
         .enable_time()
         .build()
-        .unwrap_or_else(|e| panic!("failed to initialize tokio runtime: {}", e));
+        .unwrap_or_else(|e| panic!("failed to initialize tokio runtime: {e}"));
 
     runtime.block_on(async {
         let response = reqwest::get(url).await.unwrap();
         match response.status() {
-            reqwest::StatusCode::OK => Ok(format!("Success! {:?}", response)),
-            _ => Err(format!("Error! {:?}", response)),
+            reqwest::StatusCode::OK => Ok(format!("Success! {response:?}")),
+            _ => Err(format!("Error! {response:?}")),
         }
     })
 }

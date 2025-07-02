@@ -31,24 +31,22 @@ pub async fn start_vectorize_worker_with_monitoring(
             }
             Err(e) => {
                 restart_count += 1;
-                let error_msg = format!("Worker failed: {}", e);
-                error!("{}", error_msg);
+                let error_msg = format!("Worker failed: {e}");
+                error!("{error_msg}");
                 health_monitor.set_error(error_msg).await;
                 health_monitor.increment_restart().await;
 
                 if restart_count >= max_restarts {
-                    error!("Max restart attempts ({}) reached, giving up", max_restarts);
+                    error!("Max restart attempts ({max_restarts}) reached, giving up");
                     health_monitor.set_status(WorkerStatus::Dead).await;
                     return Err(format!(
-                        "Worker failed permanently after {} restarts",
-                        max_restarts
+                        "Worker failed permanently after {max_restarts} restarts"
                     )
                     .into());
                 }
 
                 warn!(
-                    "Restarting worker in {:?} (attempt {}/{})",
-                    restart_delay, restart_count, max_restarts
+                    "Restarting worker in {restart_delay:?} (attempt {restart_count}/{max_restarts})"
                 );
                 tokio::time::sleep(restart_delay).await;
                 restart_delay = std::cmp::min(restart_delay * 2, max_restart_delay);
@@ -85,8 +83,8 @@ async fn start_vectorize_worker_inner(
                 tokio::time::sleep(tokio::time::Duration::from_secs(cfg.poll_interval)).await;
             }
             Err(e) => {
-                let error_msg = format!("Error processing job: {:?}", e);
-                error!("{}", error_msg);
+                let error_msg = format!("Error processing job: {e:?}");
+                error!("{error_msg}");
                 health_monitor.set_error(error_msg).await;
                 tokio::time::sleep(tokio::time::Duration::from_secs(cfg.poll_interval)).await;
             }

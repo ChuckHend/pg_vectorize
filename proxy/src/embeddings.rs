@@ -41,8 +41,7 @@ impl JobMapEmbeddingProvider {
         // Look up the project in the jobmap cache
         let vectorize_job = self.jobmap.get(project_name).ok_or_else(|| {
             VectorizeError::JobNotFound(format!(
-                "Project '{}' not found in jobmap cache",
-                project_name
+                "Project '{project_name}' not found in jobmap cache"
             ))
         })?;
 
@@ -157,7 +156,7 @@ pub async fn rewrite_query_with_embeddings(
     provider: &JobMapEmbeddingProvider,
 ) -> Result<String, VectorizeError> {
     let embed_calls = parse_embed_calls(sql).map_err(|e| {
-        VectorizeError::EmbeddingGenerationFailed(format!("Failed to parse embed calls: {}", e))
+        VectorizeError::EmbeddingGenerationFailed(format!("Failed to parse embed calls: {e}"))
     })?;
 
     if embed_calls.is_empty() {

@@ -48,8 +48,7 @@ pub async fn get_column_datatype(
     .await
     .map_err(|e| {
         VectorizeError::NotFound(format!(
-            "schema, table or column NOT FOUND for {}.{}.{}: {}",
-            schema, table, column, e
+            "schema, table or column NOT FOUND for {schema}.{table}.{column}: {e}"
         ))
     })?;
 
@@ -146,7 +145,7 @@ pub async fn initialize_job(
     .await?;
 
     // create embeddings table and views
-    let col_type = format!("vector({})", model_dim);
+    let col_type = format!("vector({model_dim})");
     let create_embedding_table_query = query::create_embedding_table(
         job_request.job_name.as_str(),
         &job_request.primary_key,

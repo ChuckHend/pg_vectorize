@@ -33,8 +33,8 @@ pub fn find_placeholders(var: &str) -> Option<Vec<String>> {
 pub fn interpolate(base_str: &str, env_vars: Vec<String>) -> Result<String> {
     let mut interpolated_str = base_str.to_string();
     for p in env_vars.iter() {
-        let env_val = env::var(p).context(format!("failed to get env var: {}", p))?;
-        interpolated_str = interpolated_str.replace(&format!("${{{}}}", p), &env_val);
+        let env_val = env::var(p).context(format!("failed to get env var: {p}"))?;
+        interpolated_str = interpolated_str.replace(&format!("${{{p}}}"), &env_val);
     }
     Ok(interpolated_str)
 }

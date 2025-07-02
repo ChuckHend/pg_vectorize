@@ -51,7 +51,7 @@ impl FilterValue {
         &'q self,
         query: sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>,
     ) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
-        log::error!("Binding filter value: {:?}", self);
+        log::error!("Binding filter value: {self:?}");
         match self {
             FilterValue::String(s) => query.bind(s),
             FilterValue::Integer(i) => query.bind(*i),
@@ -97,7 +97,7 @@ pub fn init_index_query(job_name: &str, idx_type: &str, job_params: &JobParams) 
     let src_table = job_params.relation.clone();
     match idx_type.to_uppercase().as_str() {
         "GIN" | "GIST" => {} // Do nothing, it's valid
-        _ => panic!("Expected 'GIN' or 'GIST', got '{}' index type", idx_type),
+        _ => panic!("Expected 'GIN' or 'GIST', got '{idx_type}' index type"),
     }
 
     format!(
@@ -115,13 +115,11 @@ pub fn create_fts_index_query(job_name: &str, idx_type: &str) -> String {
     check_input(job_name).expect("invalid job name");
     match idx_type.to_uppercase().as_str() {
         "GIN" | "GIST" => {} // Do nothing, it's valid
-        _ => panic!("Expected 'GIN' or 'GIST', got '{}' index type", idx_type),
+        _ => panic!("Expected 'GIN' or 'GIST', got '{idx_type}' index type"),
     }
     format!(
-        "CREATE INDEX IF NOT EXISTS {job_name}_{index}_idx ON vectorize._search_tokens_{job_name}
-        USING {index} (search_tokens);",
-        job_name = job_name,
-        index = idx_type
+        "CREATE INDEX IF NOT EXISTS {job_name}_{idx_type}_idx ON vectorize._search_tokens_{job_name}
+        USING {idx_type} (search_tokens);"
     )
 }
 
@@ -186,14 +184,10 @@ pub fn create_project_view(job_name: &str, schema: &str, relation: &str, pkey: &
     format!(
         "CREATE OR REPLACE VIEW vectorize.{job_name}_view as 
         SELECT t0.*, t1.embeddings, t1.updated_at as embeddings_updated_at
-        FROM {schema}.{table} t0
+        FROM {schema}.{relation} t0
         INNER JOIN vectorize._embeddings_{job_name} t1
-            ON t0.{primary_key} = t1.{primary_key};
-        ",
-        job_name = job_name,
-        schema = schema,
-        table = relation,
-        primary_key = pkey
+            ON t0.{pkey} = t1.{pkey};
+        "
     )
 }
 
@@ -212,11 +206,6 @@ pub fn create_search_tokens_table(
             FOREIGN KEY ({join_key}) REFERENCES {src_schema}.{src_table} ({join_key}) ON DELETE CASCADE
         );
         ",
-        job_name = job_name,
-        join_key = join_key,
-        join_key_type = join_key_type,
-        src_schema = src_schema,
-        src_table = src_table,
     )
 }
 
@@ -236,12 +225,6 @@ pub fn create_embedding_table(
             FOREIGN KEY ({join_key}) REFERENCES {src_schema}.{src_table} ({join_key}) ON DELETE CASCADE
         );
         ",
-        job_name = job_name,
-        join_key = join_key,
-        join_key_type = join_key_type,
-        col_type = col_type,
-        src_schema = src_schema,
-        src_table = src_table,
     )
 }
 
@@ -298,10 +281,7 @@ pub fn init_job_query() -> String {
 }
 
 pub fn drop_project_view(job_name: &str) -> String {
-    format!(
-        "DROP VIEW IF EXISTS vectorize.{job_name}_view;",
-        job_name = job_name
-    )
+    format!("DROP VIEW IF EXISTS vectorize.{job_name}_view;")
 }
 
 /// creates a function that can be called by trigger
@@ -349,21 +329,16 @@ pub fn new_rows_query_join(
 ) -> String {
     let cols = columns
         .iter()
-        .map(|s| format!("t0.{}", s))
+        .map(|s| format!("t0.{s}"))
         .collect::<Vec<_>>()
         .join(",");
 
     let base_query = format!(
         "
-    SELECT t0.{join_key}::text as record_id, {cols} as input_text
+    SELECT t0.{pkey}::text as record_id, {cols} as input_text
     FROM {schema}.{table} t0
-    LEFT JOIN vectorize._embeddings_{job_name} t1 ON t0.{join_key} = t1.{join_key}
-    WHERE t1.{join_key} IS NULL",
-        join_key = pkey,
-        cols = cols,
-        schema = schema,
-        table = table,
-        job_name = job_name
+    LEFT JOIN vectorize._embeddings_{job_name} t1 ON t0.{pkey} = t1.{pkey}
+    WHERE t1.{pkey} IS NULL"
     );
     if let Some(updated_at_col) = update_time_col {
         // updated_at_column is not required when `schedule` is realtime
@@ -452,7 +427,7 @@ pub fn join_table_cosine_similarity(
 ) -> String {
     let cols = &return_columns
         .iter()
-        .map(|s| format!("t0.{}", s))
+        .map(|s| format!("t0.{s}"))
         .collect::<Vec<_>>()
         .join(",");
 
@@ -490,10 +465,11 @@ pub fn join_table_cosine_similarity(
 
 // transform user's where_sql into the format search query expects
 fn prepare_filter(filter: &str, pkey: &str) -> String {
-    let wc = filter.replace(pkey, &format!("t0.{}", pkey));
+    let wc = filter.replace(pkey, &format!("t0.{pkey}"));
     format!("AND {wc}")
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn hybrid_search_query(
     job_name: &str,
     src_schema: &str,
@@ -509,13 +485,13 @@ pub fn hybrid_search_query(
 ) -> String {
     let cols = &return_columns
         .iter()
-        .map(|s| format!("t0.{}", s))
+        .map(|s| format!("t0.{s}"))
         .collect::<Vec<_>>()
         .join(",");
 
     let mut bind_value_counter: i16 = 3;
     let mut where_filter = "WHERE 1=1".to_string();
-    for (column, _value) in filters {
+    for column in filters.keys() {
         let filt = format!(" AND t0.\"{column}\" = ${bind_value_counter}");
         where_filter.push_str(&filt);
         bind_value_counter += 1;
@@ -534,11 +510,11 @@ pub fn hybrid_search_query(
                 f.fts_rank,
                 (
                     CASE
-                        WHEN s.semantic_rank IS NOT NULL THEN {semantic_weight}::float/({k} + s.semantic_rank)
+                        WHEN s.semantic_rank IS NOT NULL THEN {semantic_weight}::float/({rrf_k} + s.semantic_rank)
                         ELSE 0
                     END +
                     CASE
-                        WHEN f.fts_rank IS NOT NULL THEN {fts_weight}::float/({k} + f.fts_rank)
+                        WHEN f.fts_rank IS NOT NULL THEN {fts_weight}::float/({rrf_k} + f.fts_rank)
                         ELSE 0
                     END
                 ) as rrf_score
@@ -573,17 +549,7 @@ pub fn hybrid_search_query(
         {where_filter}
         ORDER BY t.rrf_score DESC
         LIMIT {limit}
-    ) t",
-        job_name = job_name,
-        src_schema = src_schema,
-        src_table = src_table,
-        join_key = join_key,
-        semantic_weight = semantic_weight,
-        fts_weight = fts_weight,
-        window_size = window_size,
-        limit = limit,
-        cols = cols,
-        k = rrf_k
+    ) t"
     )
 }
 #[cfg(test)]

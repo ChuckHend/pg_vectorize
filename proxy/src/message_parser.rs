@@ -101,8 +101,7 @@ pub async fn try_parse_complete_message(data: &[u8], config: &ProxyConfig) -> Me
         }
 
         info!(
-            "Processing startup/special message (length: {})",
-            startup_length
+            "Processing startup/special message (length: {startup_length})"
         );
         return Some(((data[..startup_length].to_vec(), None), startup_length));
     }

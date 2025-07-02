@@ -129,7 +129,7 @@ mod integration_tests {
         };
 
         let embeddings = provider.generate_embedding(&request).await.unwrap();
-        println!("{:?}", embeddings);
+        println!("{embeddings:?}");
         assert!(
             !embeddings.embeddings.is_empty(),
             "Embeddings should not be empty"

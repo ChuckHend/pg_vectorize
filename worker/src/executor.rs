@@ -36,14 +36,11 @@ pub async fn poll_job(
     if read_ct <= config.max_retries {
         match execute_job(conn, msg).await {
             Ok(_) => {
-                log::info!("Successfully processed job: {}", job_name);
+                log::info!("Successfully processed job: {job_name}");
             }
             Err(e) => {
                 log::error!(
-                    "Error processing job: {}, msg_id: {}, error: {}",
-                    job_name,
-                    msg_id,
-                    e
+                    "Error processing job: {job_name}, msg_id: {msg_id}, error: {e}"
                 );
                 Err(e)?;
             }
@@ -67,10 +64,10 @@ async fn execute_job(pool: &PgPool, msg: Message<JobMessage>) -> Result<(), Vect
 
     let job_name = msg.message.job_name.clone();
     let vectorizejob = db::get_vectorize_job(pool, &job_name).await?;
-    log::debug!("Retrieved vectorize job: {:?}", vectorizejob);
+    log::debug!("Retrieved vectorize job: {vectorizejob:?}");
     let provider = providers::get_provider(&vectorizejob.model.source, None, None, None)?;
 
-    log::info!("processing job: {:?}", vectorizejob);
+    log::info!("processing job: {vectorizejob:?}");
 
     let pkey_type = init::get_column_datatype(
         pool,

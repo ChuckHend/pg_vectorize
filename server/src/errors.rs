@@ -58,7 +58,7 @@ impl Serialize for ErrorResponse {
     where
         S: serde::Serializer,
     {
-        let variant_str = format!("{}", self);
+        let variant_str = format!("{self}");
         let mut map = serializer.serialize_map(Some(1))?;
         map.serialize_entry("error", &variant_str)?;
         map.end()
@@ -81,7 +81,7 @@ impl ResponseError for ServerError {
             ServerError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
             ServerError::NotFoundError(_) => StatusCode::NOT_FOUND,
             _ => {
-                log::error!("Internal Server Error: {:?}", self);
+                log::error!("Internal Server Error: {self:?}");
                 StatusCode::INTERNAL_SERVER_ERROR
             }
         }

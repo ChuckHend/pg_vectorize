@@ -140,14 +140,14 @@ pub async fn search(
         &payload.filters,
     );
 
-    log::info!("Query: {}", q);
+    log::info!("Query: {q}");
 
     let mut prepared_query = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
         .bind(&payload.query);
 
     // bind filter values in the same order they were processed in hybrid_search_query
-    for (_column, value) in &payload.filters {
+    for value in payload.filters.values() {
         prepared_query = value.bind_to_query(prepared_query);
     }
 

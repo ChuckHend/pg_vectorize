@@ -44,7 +44,7 @@ impl FromStr for SimilarityAlg {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "pgv_cosine_similarity" => Ok(SimilarityAlg::pgv_cosine_similarity),
-            _ => Err(format!("Invalid value: {}", s)),
+            _ => Err(format!("Invalid value: {s}")),
         }
     }
 }
@@ -53,7 +53,7 @@ impl From<String> for SimilarityAlg {
     fn from(s: String) -> Self {
         match s.as_str() {
             "pgv_cosine_similarity" => SimilarityAlg::pgv_cosine_similarity, // ... handle other variants ...
-            _ => panic!("Invalid value for SimilarityAlg: {}", s), // or handle this case differently
+            _ => panic!("Invalid value for SimilarityAlg: {s}"), // or handle this case differently
         }
     }
 }
@@ -87,7 +87,7 @@ impl FromStr for IndexDist {
             "pgv_hnsw_ip" => Ok(IndexDist::pgv_hnsw_ip),
             "pgv_hnsw_cosine" => Ok(IndexDist::pgv_hnsw_cosine),
             "vsc_diskann_cosine" => Ok(IndexDist::vsc_diskann_cosine),
-            _ => Err(format!("Invalid value for IndexDist: {}", s)),
+            _ => Err(format!("Invalid value for IndexDist: {s}")),
         }
     }
 }
@@ -99,7 +99,7 @@ impl From<String> for IndexDist {
             "pgv_hnsw_ip" => IndexDist::pgv_hnsw_ip,
             "pgv_hnsw_cosine" => IndexDist::pgv_hnsw_cosine,
             "vsc_diskann_cosine" => IndexDist::vsc_diskann_cosine,
-            _ => panic!("Invalid value for IndexDist: {}", s),
+            _ => panic!("Invalid value for IndexDist: {s}"),
         }
     }
 }
@@ -217,7 +217,7 @@ impl Model {
 
 impl From<String> for Model {
     fn from(input: String) -> Self {
-        let errmsg = format!("Invalid input string for Model: {}", input);
+        let errmsg = format!("Invalid input string for Model: {input}");
         Model::new(&input).expect(&errmsg)
     }
 }

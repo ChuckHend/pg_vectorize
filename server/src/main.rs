@@ -42,7 +42,7 @@ async fn main() {
     let jobmap = Arc::new(RwLock::new(jobmap));
 
     if let Err(e) = setup_job_change_notifications(&pool).await {
-        warn!("Failed to setup job change notifications: {}", e);
+        warn!("Failed to setup job change notifications: {e}");
     }
 
     // Start the PostgreSQL proxy
@@ -52,7 +52,7 @@ async fn main() {
     if cfg.proxy_enabled {
         tokio::spawn(async move {
             if let Err(e) = start_postgres_proxy(proxy_cfg, proxy_pool, proxy_jobmap).await {
-                error!("Failed to start PostgreSQL proxy: {}", e);
+                error!("Failed to start PostgreSQL proxy: {e}");
             }
         });
     }
@@ -68,7 +68,7 @@ async fn main() {
             start_vectorize_worker_with_monitoring(worker_cfg, worker_pool, worker_health_monitor)
                 .await
         {
-            error!("Failed to start vectorize worker: {}", e);
+            error!("Failed to start vectorize worker: {e}");
         }
     });
 
@@ -108,7 +108,7 @@ async fn start_postgres_proxy(
     let postgres_host = url.host_str().unwrap();
     let postgres_port = url.port().unwrap();
 
-    let postgres_addr: SocketAddr = format!("{}:{}", postgres_host, postgres_port)
+    let postgres_addr: SocketAddr = format!("{postgres_host}:{postgres_port}")
         .to_socket_addrs()?
         .next()
         .ok_or("Failed to resolve PostgreSQL host address")?;
@@ -121,14 +121,14 @@ async fn start_postgres_proxy(
         prepared_statements: Arc::new(RwLock::new(HashMap::new())),
     });
 
-    info!("Proxy listening on: {}", listen_addr);
-    info!("Forwarding to PostgreSQL at: {}", postgres_addr);
+    info!("Proxy listening on: {listen_addr}");
+    info!("Forwarding to PostgreSQL at: {postgres_addr}");
 
     let config_for_sync = Arc::clone(&config);
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(1)).await;
         if let Err(e) = start_cache_sync_listener(config_for_sync).await {
-            error!("Cache synchronization error: {}", e);
+            error!("Cache synchronization error: {e}");
         }
     });
 
@@ -137,17 +137,17 @@ async fn start_postgres_proxy(
     loop {
         match listener.accept().await {
             Ok((client_stream, client_addr)) => {
-                info!("New proxy connection from: {}", client_addr);
+                info!("New proxy connection from: {client_addr}");
 
                 let config = Arc::clone(&config);
                 tokio::spawn(async move {
                     if let Err(e) = handle_connection_with_timeout(client_stream, config).await {
-                        error!("Proxy connection error from {}: {}", client_addr, e);
+                        error!("Proxy connection error from {client_addr}: {e}");
                     }
                 });
             }
             Err(e) => {
-                error!("Failed to accept proxy connection: {}", e);
+                error!("Failed to accept proxy connection: {e}");
             }
         }
     }

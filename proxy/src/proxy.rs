@@ -40,13 +40,13 @@ pub async fn handle_connection(
             enhanced_proxy_with_wire_protocol_support(client_read, postgres_write, config_clone)
                 .await
         {
-            error!("Client to PostgreSQL error: {}", e);
+            error!("Client to PostgreSQL error: {e}");
         }
     });
 
     let postgres_to_client = tokio::spawn(async move {
         if let Err(e) = standard_proxy(postgres_read, client_write).await {
-            error!("PostgreSQL to client error: {}", e);
+            error!("PostgreSQL to client error: {e}");
         }
     });
 
@@ -101,8 +101,7 @@ where
     }
 
     info!(
-        "Enhanced proxy stream closed: {} bytes transferred",
-        total_bytes
+        "Enhanced proxy stream closed: {total_bytes} bytes transferred"
     );
     Ok(())
 }
@@ -130,8 +129,7 @@ where
     }
 
     info!(
-        "Standard proxy stream closed: {} bytes transferred",
-        total_bytes
+        "Standard proxy stream closed: {total_bytes} bytes transferred"
     );
     Ok(())
 }

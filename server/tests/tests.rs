@@ -17,7 +17,7 @@ async fn test_search_server() {
 
     let table = common::create_test_table().await;
 
-    let job_name = format!("test_job_{}", table);
+    let job_name = format!("test_job_{table}");
 
     // Create a valid VectorizeJob payload
     let payload = json!({
@@ -55,9 +55,8 @@ async fn test_search_server() {
     // test searching the job
     // test HTTP search endpoint with query parameters
     let resp = client
-        .get(&format!(
-            "http://0.0.0.0:8080/api/v1/search?job_name={}&query=food",
-            job_name
+        .get(format!(
+            "http://0.0.0.0:8080/api/v1/search?job_name={job_name}&query=food"
         ))
         .send()
         .await
@@ -74,9 +73,8 @@ async fn test_search_server() {
 
     // test limit parameter
     let resp = client
-        .get(&format!(
-            "http://0.0.0.0:8080/api/v1/search?job_name={}&query=writing%20utensil&limit=1",
-            job_name
+        .get(format!(
+            "http://0.0.0.0:8080/api/v1/search?job_name={job_name}&query=writing%20utensil&limit=1"
         ))
         .send()
         .await
@@ -106,11 +104,11 @@ async fn test_search_filters() {
         format!("CREATE TABLE public.{table} (LIKE public.my_products INCLUDING ALL);");
     let insert_sql = format!("INSERT INTO public.{table} SELECT * FROM public.my_products;");
 
-    sqlx::query(&&create_sql).execute(&pool).await.unwrap();
-    sqlx::query(&&insert_sql).execute(&pool).await.unwrap();
+    sqlx::query(&create_sql).execute(&pool).await.unwrap();
+    sqlx::query(&insert_sql).execute(&pool).await.unwrap();
 
     // initialize search job
-    let job_name = format!("test_filter_{}", test_num);
+    let job_name = format!("test_filter_{test_num}");
     let payload = json!({
         "job_name": job_name,
         "src_table": table,
@@ -179,7 +177,7 @@ async fn test_lifecycle() {
 
     let database_url = url.to_string();
 
-    println!("database_url: {}", database_url);
+    println!("database_url: {database_url}");
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(1)
         .connect(&database_url)
@@ -188,7 +186,7 @@ async fn test_lifecycle() {
 
     let table = common::create_test_table().await;
 
-    let job_name = format!("test_job_{}", table);
+    let job_name = format!("test_job_{table}");
 
     // Create a valid VectorizeJob payload
     let payload = json!({
@@ -227,8 +225,7 @@ async fn test_lifecycle() {
     // test searching the job
     // test HTTP search endpoint with query parameters
     let search_url = format!(
-        "http://0.0.0.0:8080/api/v1/search?job_name={}&query=food",
-        job_name
+        "http://0.0.0.0:8080/api/v1/search?job_name={job_name}&query=food"
     );
     let resp = client
         .get(&search_url)
@@ -252,7 +249,7 @@ async fn test_lifecycle() {
     // First result should be pizza (highest similarity)
     assert_eq!(search_results[0]["content"].as_str().unwrap(), "pizza");
     assert!(search_results[0]["similarity_score"].as_f64().unwrap() > 0.6);
-    let q = format!("SELECT (vectorize.embed('food', '{}'));", job_name);
+    let q = format!("SELECT (vectorize.embed('food', '{job_name}'));");
 
     let row = sqlx::query(&q).fetch_one(&pool).await.unwrap();
     let v: Vector = row.get(0);
@@ -272,9 +269,7 @@ async fn test_lifecycle() {
             ) t1
         INNER JOIN vectorize_test.{table} t0 on t0.id = t1.id
     ) t
-    ORDER BY t.similarity_score DESC;",
-        job_name = job_name,
-        table = table
+    ORDER BY t.similarity_score DESC;"
     );
     let row = sqlx::query(&q).fetch_all(&pool).await.unwrap();
     assert_eq!(row.len(), 3);

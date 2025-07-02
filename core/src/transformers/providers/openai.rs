@@ -242,7 +242,7 @@ mod tests {
     fn test_trim_inputs_trimming_required() {
         let token_len = 1000000;
         let long_input = (0..token_len)
-            .map(|i| format!("token{}", i))
+            .map(|i| format!("token{i}"))
             .collect::<Vec<_>>()
             .join(" ");
 
@@ -265,7 +265,7 @@ mod tests {
     fn test_trim_inputs_mixed_cases() {
         let num_tokens_in = 1000000;
         let long_input = (0..num_tokens_in)
-            .map(|i| format!("token{}", i))
+            .map(|i| format!("token{i}"))
             .collect::<Vec<_>>()
             .join(" ");
         let data = vec![

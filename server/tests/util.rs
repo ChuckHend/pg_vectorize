@@ -49,8 +49,8 @@ pub mod common {
         num_expected: usize,
     ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
         let client = reqwest::Client::new();
-        let search_url = format!("http://0.0.0.0:8080/api/v1/search?{}", params);
-        println!("Search URL: {}", search_url);
+        let search_url = format!("http://0.0.0.0:8080/api/v1/search?{params}");
+        println!("Search URL: {search_url}");
 
         let start_time = std::time::Instant::now();
         let timeout_duration = std::time::Duration::from_secs(10);
@@ -102,11 +102,10 @@ pub mod common {
         let mut rng = rand::rng();
         let test_num = rng.random_range(1..1000);
 
-        let table = format!("test_table_{}", test_num);
+        let table = format!("test_table_{test_num}");
         sqlx::query(
             format!(
-                "create table if not exists vectorize_test.{} (id serial primary key, content text, updated_at timestamptz);",
-                table
+                "create table if not exists vectorize_test.{table} (id serial primary key, content text, updated_at timestamptz);"
             )
             .as_str(),
         )
@@ -117,8 +116,7 @@ pub mod common {
         for record in ["pizza", "pencil", "airplane"] {
             sqlx::query(
                 format!(
-                    "insert into vectorize_test.{} (content, updated_at) values ('{}', now());",
-                    table, record
+                    "insert into vectorize_test.{table} (content, updated_at) values ('{record}', now());"
                 )
                 .as_str(),
             )

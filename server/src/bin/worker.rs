@@ -37,7 +37,7 @@ async fn main() {
             }
             Err(e) => {
                 // error, long wait
-                log::error!("Error processing job: {:?}", e);
+                log::error!("Error processing job: {e:?}");
                 tokio::time::sleep(tokio::time::Duration::from_secs(cfg.poll_interval)).await;
             }
         }
