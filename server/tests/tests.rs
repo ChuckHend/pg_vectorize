@@ -7,7 +7,7 @@ use sqlx::Row;
 use rand::prelude::*;
 use util::common;
 use vectorize_core::init::exec_psql;
-use vectorize_server::routes::table::JobResponse;
+use vectorize_server::routes::{search::search, table::JobResponse};
 // these tests require the following main server, vector-serve, and Postgres to be running
 // easiest way is to use the docker-compose file in the root of the project
 #[ignore]
@@ -53,18 +53,8 @@ async fn test_search_server() {
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     // test searching the job
-    // test HTTP search endpoint with query parameters
-    let resp = client
-        .get(format!(
-            "http://0.0.0.0:8080/api/v1/search?job_name={job_name}&query=food"
-        ))
-        .send()
-        .await
-        .expect("Failed to send search request");
-
-    let search_results: Vec<serde_json::Value> =
-        resp.json().await.expect("Failed to parse search response");
-
+    let params = format!("job_name={job_name}&query=food");
+    let search_results = common::search_with_retry(&params, 3).await.unwrap();
     // 3 results (number rows in table)
     assert_eq!(search_results.len(), 3);
     // First result should be pizza (highest similarity)
@@ -72,17 +62,8 @@ async fn test_search_server() {
     assert!(search_results[0]["similarity_score"].as_f64().unwrap() > 0.6);
 
     // test limit parameter
-    let resp = client
-        .get(format!(
-            "http://0.0.0.0:8080/api/v1/search?job_name={job_name}&query=writing%20utensil&limit=1"
-        ))
-        .send()
-        .await
-        .expect("Failed to send search request");
-
-    let search_results: Vec<serde_json::Value> =
-        resp.json().await.expect("Failed to parse search response");
-
+    let params = format!("job_name={job_name}&query=writing%20utensil&limit=1");
+    let search_results = common::search_with_retry(&params, 1).await.unwrap();
     assert_eq!(search_results.len(), 1);
     assert_eq!(search_results[0]["content"].as_str().unwrap(), "pencil");
 }
@@ -90,7 +71,6 @@ async fn test_search_server() {
 #[ignore]
 #[tokio::test]
 async fn test_search_filters() {
-    env_logger::init();
     let mut rng = rand::rng();
     let test_num = rng.random_range(1..100000);
     let cfg = vectorize_core::config::Config::from_env();
@@ -162,8 +142,6 @@ async fn test_search_filters() {
 #[ignore]
 #[tokio::test]
 async fn test_lifecycle() {
-    env_logger::init();
-
     // Initialize the project (database setup, etc.) without creating test app
     common::init_test_environment().await;
 
@@ -177,7 +155,6 @@ async fn test_lifecycle() {
 
     let database_url = url.to_string();
 
-    println!("database_url: {database_url}");
     let pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(1)
         .connect(&database_url)
@@ -223,23 +200,8 @@ async fn test_lifecycle() {
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     // test searching the job
-    // test HTTP search endpoint with query parameters
-    let search_url = format!("http://0.0.0.0:8080/api/v1/search?job_name={job_name}&query=food");
-    let resp = client
-        .get(&search_url)
-        .send()
-        .await
-        .expect("Failed to send search request");
-
-    assert_eq!(
-        resp.status(),
-        reqwest::StatusCode::OK,
-        "Search response status: {:?}",
-        resp.status()
-    );
-
-    let search_results: Vec<serde_json::Value> =
-        resp.json().await.expect("Failed to parse search response");
+    let params = format!("job_name={job_name}&query=food");
+    let search_results = common::search_with_retry(&params, 3).await.unwrap();
 
     // Should return 3 results
     assert_eq!(search_results.len(), 3);
