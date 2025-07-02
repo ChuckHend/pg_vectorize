@@ -59,9 +59,6 @@ curl -X POST http://localhost:8080/api/v1/table -d '{
 curl -X GET "http://localhost:8080/api/v1/search?job_name=my_job&query=camping%20grear&limit=2" | jq .
 ```
 
-
-curl -X GET "http://localhost:8080/api/v1/search?job_name=verses_chat&query=camping&book=joblimit=2"
-
 ```json
 [
   {
