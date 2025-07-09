@@ -4,11 +4,6 @@ x-logging: &default-logging
     max-size: 10m
     max-file: 50
 
-x-env: &default-env
-  
-  
-  
-
 services:
   server:
     restart: always
