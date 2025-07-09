@@ -122,10 +122,13 @@ LIMIT 2;"
 
 Assuming you have an existing Postgres instance with `pgvector` installed, you can run the HTTP servers using Docker and get started quickly.
 
-Set `DATABASE_URL` following env vars in a `.env` file:
+Set the following env vars in a `.env` file:
+
+If your embedding model is gated or private on Hugging Face, you will also need to set the `HF_API_KEY` environment variable. Otherwise you can ignore it.
 
 ```dotenv
 DATABASE_URL=postgresql://user:password@your-postgres-host:5432/postgres
+HF_API_KEY=your_huggingface_api_key
 ```
 
 Then start the search and embedding servers:
@@ -137,4 +140,3 @@ docker compose up -d
 Then generate embeddings and indices as describe [above](#generating-embeddings).
 
 Finally, search using the [HTTP API](#search-with-http-api).
-

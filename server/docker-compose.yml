@@ -30,3 +30,5 @@ services:
     image: ghcr.io/chuckhend/vector-serve:latest
     ports:
       - 3000:3000
+    environment:
+      HF_API_KEY: ${HF_API_KEY}

@@ -74,10 +74,10 @@ def get_model(
         # try to download from HF when MULTI_MODEL enabled
         # and model not in cache
         logging.debug(f"Model: {model_name} not in cache.")
+        # fall back to env var for Hugging Face API key, if it exists
+        token = os.getenv("HF_API_KEY") or api_key
         try:
-            model = SentenceTransformer(
-                model_name, token=api_key, trust_remote_code=True
-            )
+            model = SentenceTransformer(model_name, token=token, trust_remote_code=True)
             # add model to cache
             model_cache[model_name] = model
             logging.debug(f"Added model: {model_name} to cache.")
