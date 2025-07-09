@@ -117,3 +117,24 @@ LIMIT 2;"
          35 | Gardening Gloves | Handwear for protection during gardening tasks    | garden           |  8.00 | 2025-06-25 20:27:07.725765+00 |  0.2909192990160845
 (2 rows)
 ```
+
+## Running on an existing Postgres instance
+
+Assuming you have an existing Postgres instance with `pgvector` installed, you can run the HTTP servers using Docker and get started quickly.
+
+Set `DATABASE_URL` following env vars in a `.env` file:
+
+```dotenv
+DATABASE_URL=postgresql://user:password@your-postgres-host:5432/postgres
+```
+
+Then start the search and embedding servers:
+
+```bash
+docker compose up -d
+```
+
+Then generate embeddings and indices as describe [above](#generating-embeddings).
+
+Finally, search using the [HTTP API](#search-with-http-api).
+
