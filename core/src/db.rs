@@ -7,7 +7,7 @@ pub async fn get_vectorize_job(
 ) -> Result<VectorizeJob, VectorizeError> {
     // Changed return type
     let row = sqlx::query(
-        "SELECT job_name, src_table, src_schema, src_column, primary_key, update_time_col, model 
+        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model 
          FROM vectorize.job 
          WHERE job_name = $1",
     )

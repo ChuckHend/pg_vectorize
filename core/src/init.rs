@@ -112,12 +112,12 @@ pub async fn initialize_job(
     // create the job record
     let mut tx = pool.begin().await?;
     let job_id: Uuid = sqlx::query_scalar("
-        INSERT INTO vectorize.job (job_name, src_schema, src_table, src_column, primary_key, update_time_col, model)
+        INSERT INTO vectorize.job (job_name, src_schema, src_table, src_columns, primary_key, update_time_col, model)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (job_name) DO UPDATE SET
             src_schema = EXCLUDED.src_schema,
             src_table = EXCLUDED.src_table,
-            src_column = EXCLUDED.src_column,
+            src_columns = EXCLUDED.src_columns,
             primary_key = EXCLUDED.primary_key,
             update_time_col = EXCLUDED.update_time_col,
             model = EXCLUDED.model
@@ -125,7 +125,7 @@ pub async fn initialize_job(
         .bind(job_request.job_name.clone())
         .bind(job_request.src_schema.clone())
         .bind(job_request.src_table.clone())
-        .bind(job_request.src_column.clone())
+        .bind(job_request.src_columns.clone())
         .bind(job_request.primary_key.clone())
         .bind(job_request.update_time_col.clone())
         .bind(job_request.model.to_string())
@@ -213,7 +213,7 @@ pub async fn initialize_job(
         &job_request.primary_key,
         &job_request.src_schema,
         &job_request.src_table,
-        &job_request.src_column,
+        &job_request.src_columns,
     );
     for q in search_token_trigger_queries {
         sqlx::query(&q).execute(&mut *tx).await?;
@@ -227,13 +227,18 @@ pub async fn initialize_job(
     // previous tx needs to be committed before we can enqueue the job
     scan_job(pool, job_request).await?;
 
-    // trigger creation of all the tsvectors synchronously
+    let search_cols = job_request
+        .src_columns
+        .iter()
+        .map(|col| format!("COALESCE({col}, '')"))
+        .collect::<Vec<String>>()
+        .join(" || ' ' || ");
     let initial_update_query = format!(
         "
         INSERT INTO vectorize._search_tokens_{job_name} ({join_key}, search_tokens)
         SELECT 
             {join_key}, 
-            to_tsvector('english', COALESCE({src_column}, ''))
+            to_tsvector('english', {search_cols})
         FROM {src_schema}.{src_table}
         ON CONFLICT ({join_key}) DO UPDATE SET
             search_tokens = EXCLUDED.search_tokens,
@@ -241,7 +246,6 @@ pub async fn initialize_job(
     ",
         src_schema = job_request.src_schema,
         src_table = job_request.src_table,
-        src_column = job_request.src_column,
         join_key = job_request.primary_key,
         job_name = job_request.job_name
     );
@@ -254,7 +258,7 @@ pub async fn initialize_job(
 pub async fn scan_job(pool: &PgPool, job_request: &VectorizeJob) -> Result<(), VectorizeError> {
     let rows_for_update_query = query::new_rows_query_join(
         &job_request.job_name,
-        &[job_request.src_column.clone()],
+        &job_request.src_columns,
         &job_request.src_schema,
         &job_request.src_table,
         &job_request.primary_key,

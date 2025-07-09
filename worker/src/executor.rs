@@ -75,15 +75,20 @@ async fn execute_job(pool: &PgPool, msg: Message<JobMessage>) -> Result<(), Vect
     )
     .await?;
 
+    let select_cols = vectorizejob
+        .src_columns
+        .iter()
+        .map(|col| format!("'{col}: ' || COALESCE({col}, '') || ' '"))
+        .collect::<Vec<String>>()
+        .join(" || ' ' || ");
     let job_records_query = format!(
         "
     SELECT
         {primary_key}::text as record_id,
-        {cols} as input_text
+        {select_cols} as input_text
     FROM {schema}.{relation}
     WHERE {primary_key} = ANY ($1::{pk_type}[])",
         primary_key = vectorizejob.primary_key,
-        cols = vectorizejob.src_column,
         schema = vectorizejob.src_schema,
         relation = vectorizejob.src_table,
         pk_type = pkey_type

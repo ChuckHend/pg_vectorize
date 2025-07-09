@@ -61,6 +61,14 @@ impl FilterValue {
     }
 }
 
+fn generate_column_concat(src_columns: &[String], prefix: &str) -> String {
+    src_columns
+        .iter()
+        .map(|col| format!("COALESCE({prefix}.{col}, '')"))
+        .collect::<Vec<String>>()
+        .join(" || ' ' || ")
+}
+
 // errors if input contains non-alphanumeric characters or underscore
 // in other worse - valid column names only
 pub fn check_input(input: &str) -> Result<()> {
@@ -81,7 +89,7 @@ pub fn create_vectorize_table() -> String {
             job_name TEXT NOT NULL UNIQUE,
             src_schema TEXT NOT NULL,
             src_table TEXT NOT NULL,
-            src_column TEXT NOT NULL,
+            src_columns TEXT[] NOT NULL,
             primary_key TEXT NOT NULL,
             update_time_col TEXT NOT NULL,
             model TEXT NOT NULL,
@@ -128,46 +136,46 @@ pub fn update_search_tokens_trigger_queries(
     join_key: &str,
     src_schema: &str,
     src_table: &str,
-    src_column: &str,
+    src_columns: &[String],
 ) -> Vec<String> {
     let trigger_fn_name = format!("update_{job_name}_search_tokens");
+
+    let new_cols = generate_column_concat(src_columns, "NEW");
+    let old_cols = generate_column_concat(src_columns, "OLD");
+
     let trigger_dev = format!(
         "
-    CREATE OR REPLACE FUNCTION {trigger_fn_name}()
-    RETURNS TRIGGER AS $$
-    BEGIN
-    -- Handle INSERT and UPDATE operations
-    IF TG_OP = 'INSERT' THEN
-        -- Insert new search tokens record
+CREATE OR REPLACE FUNCTION {trigger_fn_name}()
+RETURNS TRIGGER AS $$
+BEGIN
+-- Handle INSERT and UPDATE operations
+IF TG_OP = 'INSERT' THEN
+    INSERT INTO vectorize._search_tokens_{job_name} ({join_key}, search_tokens)
+    VALUES (
+        NEW.{join_key},
+        to_tsvector('english', {new_cols})
+    )
+    ON CONFLICT ({join_key}) DO UPDATE SET
+        search_tokens = to_tsvector('english', {new_cols}),
+        updated_at = CLOCK_TIMESTAMP()
+    ;
+    RETURN NEW;
+END IF;
+
+IF TG_OP = 'UPDATE' THEN
+    IF {old_cols} IS DISTINCT FROM {new_cols} THEN
         INSERT INTO vectorize._search_tokens_{job_name} ({join_key}, search_tokens)
-        VALUES (
-            NEW.{join_key},
-            to_tsvector('english', COALESCE(NEW.{src_column}, ''))
-        )
+        VALUES (NEW.{join_key}, to_tsvector('english', {new_cols}))
         ON CONFLICT ({join_key}) DO UPDATE SET
-            search_tokens = to_tsvector('english', COALESCE(NEW.{src_column}, '')),
-            updated_at = CLOCK_TIMESTAMP()
-        ;
-        RETURN NEW;
+            search_tokens = to_tsvector('english', {new_cols}),
+            updated_at = CLOCK_TIMESTAMP();
     END IF;
+    RETURN NEW;
+END IF;
 
-    IF TG_OP = 'UPDATE' THEN
-        -- Only update if content actually changed
-        IF OLD.{src_column} IS DISTINCT FROM NEW.{src_column} THEN
-            -- Update or insert search tokens
-            INSERT INTO vectorize._search_tokens_{job_name} ({join_key}, search_tokens)
-            VALUES (NEW.{join_key}, to_tsvector('english', COALESCE(NEW.{src_column}, '')))
-            ON CONFLICT ({join_key}) DO UPDATE SET
-                search_tokens = to_tsvector('english', COALESCE(NEW.{src_column}, '')),
-                updated_at = CLOCK_TIMESTAMP();
-        END IF;
-
-        RETURN NEW;
-    END IF;
-
-    RETURN NULL;
-    END;
-    $$ LANGUAGE plpgsql;"
+RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;",
     );
     let apply_trigger = format!(
         "
@@ -319,6 +327,7 @@ EXECUTE FUNCTION vectorize.handle_update_{job_name}();",
     )
 }
 
+// generates query to fetch new rows have had data changed since last embedding generation
 pub fn new_rows_query_join(
     job_name: &str,
     columns: &[String],

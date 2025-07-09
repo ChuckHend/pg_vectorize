@@ -45,7 +45,7 @@ curl -X POST http://localhost:8080/api/v1/table -d '{
         "job_name": "my_job",
         "src_table": "my_products",
         "src_schema": "public",
-        "src_column": "description",
+        "src_columns": ["description"],
         "primary_key": "product_id",
         "update_time_col": "updated_at",
         "model": "sentence-transformers/all-MiniLM-L6-v2"

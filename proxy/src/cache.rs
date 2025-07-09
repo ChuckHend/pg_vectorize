@@ -120,7 +120,7 @@ pub async fn refresh_job_cache(
     config: &ProxyConfig,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let all_jobs: Vec<VectorizeJob> = sqlx::query_as(
-        "SELECT job_name, src_table, src_schema, src_column, primary_key, update_time_col, model FROM vectorize.job",
+        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model FROM vectorize.job",
     )
     .fetch_all(&config.db_pool)
     .await?;
@@ -146,7 +146,7 @@ pub async fn load_initial_job_cache(
     pool: &sqlx::PgPool,
 ) -> Result<HashMap<String, VectorizeJob>, WireProxyError> {
     let all_jobs: Vec<VectorizeJob> = sqlx::query_as(
-        "SELECT job_name, src_table, src_schema, src_column, primary_key, update_time_col, model FROM vectorize.job",
+        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model FROM vectorize.job",
     )
     .fetch_all(pool)
     .await

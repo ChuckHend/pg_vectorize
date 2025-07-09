@@ -13,7 +13,7 @@ pub struct VectorizeJob {
     pub job_name: String,
     pub src_table: String,
     pub src_schema: String,
-    pub src_column: String,
+    pub src_columns: Vec<String>,
     pub primary_key: String,
     pub update_time_col: String,
     #[serde(
