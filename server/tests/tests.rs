@@ -6,7 +6,6 @@ use sqlx::Row;
 
 use rand::prelude::*;
 use util::common;
-use vectorize_core::init::exec_psql;
 use vectorize_server::routes::table::JobResponse;
 // these tests require the following main server, vector-serve, and Postgres to be running
 // easiest way is to use the docker-compose file in the root of the project
@@ -79,7 +78,7 @@ async fn test_search_filters() {
     let test_num = rng.random_range(1..100000);
     let cfg = vectorize_core::config::Config::from_env();
     let sql = std::fs::read_to_string("sql/example.sql").unwrap();
-    let _sql_exec = exec_psql(&cfg.database_url, &sql);
+    common::exec_psql(&cfg.database_url, &sql);
 
     let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
     // test table

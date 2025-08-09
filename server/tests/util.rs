@@ -3,7 +3,9 @@ pub mod common {
     use actix_service::Service;
     use actix_web::test;
     use actix_web::{App, Error, dev::ServiceResponse, web};
+    use anyhow::anyhow;
     use rand::prelude::*;
+    use std::process::Command;
     use vectorize_core::init;
 
     #[cfg(test)]
@@ -126,5 +128,24 @@ pub mod common {
         }
 
         table
+    }
+
+    pub fn exec_psql(conn_string: &str, sql_content: &str) {
+        let output = Command::new("psql")
+            .arg(conn_string)
+            .arg("-c")
+            .arg(sql_content)
+            .output()
+            .unwrap();
+        if !output.status.success() {
+            log::error!(
+                "failed to execute SQL: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            panic!(
+                "failed to execute SQL: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 }

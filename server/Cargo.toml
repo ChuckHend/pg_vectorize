@@ -13,6 +13,7 @@ path = "src/lib.rs"
 vectorize_core = { package = "vectorize-core", path = "../core" }
 vectorize_worker = { package = "vectorize-worker", path = "../worker" }
 vectorize_proxy = { package = "vectorize-proxy", path = "../proxy" }
+pgmq = { workspace = true }
 
 actix-cors = "0.7.1"
 actix-http = "3.11.0"
@@ -31,7 +32,6 @@ futures = "0.3.31"
 lazy_static = "1.5.0"
 log = "0.4"
 ollama-rs = "=0.2.1"
-pgmq = "0.30.1"
 pgwire = { version = "0.30", features = ["server-api-aws-lc-rs"] }
 postgres-protocol = "0.6.8"
 rand = "0.9.1"

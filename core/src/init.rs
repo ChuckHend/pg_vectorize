@@ -3,9 +3,8 @@ use crate::query;
 use crate::transformers::providers::get_provider;
 use crate::types::JobMessage;
 use crate::types::VectorizeJob;
-use anyhow::anyhow;
 use sqlx::PgPool;
-use std::process::Command;
+
 use uuid::Uuid;
 
 pub async fn init_project(pool: &PgPool, conn_string: Option<&str>) -> Result<(), VectorizeError> {
@@ -73,35 +72,8 @@ pub async fn init_pgmq(pool: &PgPool, conn_string: Option<&str>) -> Result<(), V
         log::info!("Installing pgmq...")
     }
 
-    // URL to the raw SQL file
-    let sql_url = "https://raw.githubusercontent.com/pgmq/pgmq/main/pgmq-extension/sql/pgmq.sql";
-
-    let client = reqwest::Client::new();
-    let response = client.get(sql_url).send().await?;
-    let sql_content = response.text().await?;
-
-    if let Some(url) = conn_string {
-        exec_psql(url, &sql_content)?;
-    }
-    Ok(())
-}
-
-pub fn exec_psql(conn_string: &str, sql_content: &str) -> Result<(), VectorizeError> {
-    let output = Command::new("psql")
-        .arg(conn_string)
-        .arg("-c")
-        .arg(sql_content)
-        .output()
-        .unwrap();
-    if !output.status.success() {
-        log::error!(
-            "failed to execute SQL: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return Err(VectorizeError::InternalError(anyhow!(
-            "Failed to execute SQL".to_string()
-        )));
-    }
+    let queue = pgmq::PGMQueueExt::new_with_pool(pool.clone()).await;
+    queue.install_sql(None).await?;
     Ok(())
 }
 

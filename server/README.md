@@ -38,14 +38,14 @@ psql postgres://postgres:postgres@localhost:5432/postgres -f sql/example.sql
 
 ## Generating embeddings
 
-We'll use the API to create a job that will  generate embeddings for the `description` column in the `my_products` table. Anytime we insert or update a row in this table, the embeddings will automatically be updated.
+We'll use the API to create a job that will  generate embeddings for the `product_name` and `description` columns in the `my_products` table. Anytime we insert or update a row in this table, the embeddings will automatically be updated.
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/table -d '{
         "job_name": "my_job",
         "src_table": "my_products",
         "src_schema": "public",
-        "src_columns": ["description"],
+        "src_columns": ["product_name", "description"],
         "primary_key": "product_id",
         "update_time_col": "updated_at",
         "model": "sentence-transformers/all-MiniLM-L6-v2"
@@ -56,7 +56,7 @@ curl -X POST http://localhost:8080/api/v1/table -d '{
 ## Search with HTTP API
 
 ```bash
-curl -X GET "http://localhost:8080/api/v1/search?job_name=my_job&query=camping%20grear&limit=2" | jq .
+curl -X GET "http://localhost:8080/api/v1/search?job_name=my_job&query=camping%20gear&limit=2" | jq .
 ```
 
 ```json
