@@ -43,6 +43,7 @@ dependencies = [
     { name = "prometheus-fastapi-instrumentator" },
     { name = "sentence-transformers" },
     { name = "torch" },
+    { name = "transformers" },
 ]
 
 [package.dev-dependencies]
@@ -62,6 +63,7 @@ requires-dist = [
     { name = "prometheus-fastapi-instrumentator", specifier = ">=7.0.0" },
     { name = "sentence-transformers", specifier = ">=5" },
     { name = "torch", specifier = ">=2.4.1" },
+    { name = "transformers", specifier = ">=4.55.0" },
 ]
 
 [package.metadata.requires-dev]
