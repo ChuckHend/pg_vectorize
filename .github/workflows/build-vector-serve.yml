@@ -43,6 +43,8 @@ jobs:
         working-directory: ./vector-serve/
         run: make check
       - name: Tests
+        env:
+          HF_API_KEY: ${{ secrets.HF_API_KEY }}
         working-directory: ./vector-serve/
         run: make test
 
