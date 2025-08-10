@@ -2,6 +2,7 @@ import os
 import logging
 
 from fastapi import FastAPI, HTTPException
+from huggingface_hub import login, logout
 from sentence_transformers import SentenceTransformer
 
 from app.metrics import ML_MODEL_COUNT
@@ -30,7 +31,7 @@ def parse_header(authorization: str | None) -> str | None:
     """parses hugging face token from the authorization header
     Returns None if the token is not a hugging face token"""
     if authorization is not None:
-        token_value = authorization.split("Bearer ")[-1]
+        token_value = authorization.split()[-1]
         is_hf_token = bool(token_value and token_value.startswith("hf_"))
         if is_hf_token:
             return token_value
@@ -77,7 +78,8 @@ def get_model(
         # fall back to env var for Hugging Face API key, if it exists
         token = os.getenv("HF_API_KEY") or api_key
         try:
-            model = SentenceTransformer(model_name, token=token, trust_remote_code=True)
+            login(token=token)
+            model = SentenceTransformer(model_name, trust_remote_code=True)
             # add model to cache
             model_cache[model_name] = model
             logging.debug(f"Added model: {model_name} to cache.")
@@ -86,6 +88,7 @@ def get_model(
                 logging.warning("No api_key provided for model: %s", model_name)
             logging.exception("Failed to load model %s", model_name)
             raise
+        logout()
     ML_MODEL_COUNT.labels(model_name=model_name).inc()
     return model
 
