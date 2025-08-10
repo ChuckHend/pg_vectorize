@@ -9,11 +9,12 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi[standard]>=0.115.2",
-    "sentence-transformers>=3.2.0",
+    "sentence-transformers>=5",
     "torch>=2.4.1",
     "einops>=0.8.0",
     "prometheus-client>=0.21.0",
     "prometheus-fastapi-instrumentator>=7.0.0",
+    "huggingface-hub>=0.34.4",
 ]
 
 [tool.uv]

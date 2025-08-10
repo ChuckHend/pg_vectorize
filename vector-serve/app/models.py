@@ -30,7 +30,7 @@ def parse_header(authorization: str | None) -> str | None:
     """parses hugging face token from the authorization header
     Returns None if the token is not a hugging face token"""
     if authorization is not None:
-        token_value = authorization.split("Bearer ")[-1]
+        token_value = authorization.split()[-1]
         is_hf_token = bool(token_value and token_value.startswith("hf_"))
         if is_hf_token:
             return token_value
