@@ -35,4 +35,7 @@ def test_private_hf_model(test_client):
         }
     )
     assert response.status_code == 200
-    assert "embedding" in response.json()
+    assert "data" in response.json()
+    embed = response.json()["data"][0]["embedding"]
+    assert isinstance(embed, list)
+    assert len(embed) == 384
