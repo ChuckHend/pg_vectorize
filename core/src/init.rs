@@ -167,7 +167,7 @@ pub async fn initialize_job(
 
     // create triggers on the source table
     let trigger_handler =
-        query::create_trigger_handler(&job_request.job_name, &job_request.job_name);
+        query::create_trigger_handler(&job_request.job_name, &job_request.primary_key);
     let insert_trigger = query::create_event_trigger(
         &job_request.job_name,
         &job_request.src_schema,
