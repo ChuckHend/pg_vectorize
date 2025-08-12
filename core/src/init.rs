@@ -17,6 +17,8 @@ pub async fn init_project(pool: &PgPool) -> Result<(), VectorizeError> {
         query::create_vectorize_table(),
         "SELECT pgmq.create('vectorize_jobs');".to_string(),
         query::handle_table_update(),
+        "ALTER SYSTEM SET vectorize.batch_size = 10000;".to_string(),
+        "SELECT pg_reload_conf();".to_string(),
     ];
     for s in statements {
         sqlx::query(&s).execute(pool).await?;
