@@ -16,6 +16,7 @@ pub async fn init_project(pool: &PgPool) -> Result<(), VectorizeError> {
         "CREATE EXTENSION IF NOT EXISTS vector;".to_string(),
         query::create_vectorize_table(),
         "SELECT pgmq.create('vectorize_jobs');".to_string(),
+        query::handle_table_update(),
     ];
     for s in statements {
         sqlx::query(&s).execute(pool).await?;
