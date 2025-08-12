@@ -116,18 +116,22 @@ pub mod common {
         .expect("unable to create test table");
 
         for record in ["pizza", "pencil", "airplane"] {
-            sqlx::query(
-                format!(
-                    "insert into vectorize_test.{table} (content, updated_at) values ('{record}', now());"
-                )
-                .as_str(),
-            )
-            .execute(&pool)
-            .await
-            .expect("unable to insert test data");
+            insert_row(&pool, &table, record).await;
         }
 
         table
+    }
+
+    pub async fn insert_row(pool: &sqlx::PgPool, table: &str, content: &str) {
+        sqlx::query(
+            format!(
+                "insert into vectorize_test.{table} (content, updated_at) values ('{content}', now());"
+            )
+            .as_str(),
+        )
+        .execute(pool)
+        .await
+        .expect("unable to insert test data");
     }
 
     pub fn exec_psql(conn_string: &str, sql_content: &str) {

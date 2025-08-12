@@ -7,9 +7,9 @@ use sqlx::PgPool;
 
 use uuid::Uuid;
 
-pub async fn init_project(pool: &PgPool, conn_string: Option<&str>) -> Result<(), VectorizeError> {
+pub async fn init_project(pool: &PgPool) -> Result<(), VectorizeError> {
     // Initialize the pgmq extension
-    init_pgmq(pool, conn_string).await?;
+    init_pgmq(pool).await?;
 
     let statements = vec![
         "CREATE SCHEMA IF NOT EXISTS vectorize;".to_string(),
@@ -63,7 +63,7 @@ async fn pgmq_schema_exists(pool: &PgPool) -> Result<bool, sqlx::Error> {
     Ok(row)
 }
 
-pub async fn init_pgmq(pool: &PgPool, conn_string: Option<&str>) -> Result<(), VectorizeError> {
+pub async fn init_pgmq(pool: &PgPool) -> Result<(), VectorizeError> {
     // Check if the pgmq schema already exists
     if pgmq_schema_exists(pool).await? {
         log::info!("pgmq schema already exists, skipping initialization.");

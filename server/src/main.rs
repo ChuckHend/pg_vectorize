@@ -31,7 +31,7 @@ async fn main() {
         .expect("unable to connect to postgres");
     let server_port = cfg.webserver_port;
     let server_workers = cfg.num_server_workers;
-    init::init_project(&pool, Some(&cfg.database_url))
+    init::init_project(&pool)
         .await
         .expect("Failed to initialize project");
 

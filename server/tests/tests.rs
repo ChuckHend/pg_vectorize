@@ -69,6 +69,19 @@ async fn test_search_server() {
     let search_results = common::search_with_retry(&params, 1).await.unwrap();
     assert_eq!(search_results.len(), 1);
     assert_eq!(search_results[0]["content"].as_str().unwrap(), "pencil");
+
+    // test insert
+    let cfg = vectorize_core::config::Config::from_env();
+
+    let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
+    common::insert_row(&pool, &table, "apples and apple trees").await;
+    let params = format!("job_name={job_name}&query=apples");
+    let search_results = common::search_with_retry(&params, 1).await.unwrap();
+    assert_eq!(search_results.len(), 1);
+    assert_eq!(
+        search_results[0]["content"].as_str().unwrap(),
+        "apples and apple trees"
+    );
 }
 
 #[ignore]
