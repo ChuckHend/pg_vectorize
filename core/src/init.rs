@@ -282,6 +282,6 @@ mod tests {
         env_logger::init();
         let conn_string = "postgresql://postgres:postgres@localhost:5432/postgres";
         let pool = PgPool::connect(conn_string).await.unwrap();
-        init_pgmq(&pool, Some(conn_string)).await.unwrap();
+        init_pgmq(&pool).await.unwrap();
     }
 }
