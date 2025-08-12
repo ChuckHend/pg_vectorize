@@ -3,7 +3,6 @@ pub mod common {
     use actix_service::Service;
     use actix_web::test;
     use actix_web::{App, Error, dev::ServiceResponse, web};
-    use anyhow::anyhow;
     use rand::prelude::*;
     use std::process::Command;
     use vectorize_core::init;
@@ -68,17 +67,15 @@ pub mod common {
                     return Ok(search_results);
                 } else {
                     // Log a warning if the number of results is not as expected
+                    let num_results = search_results.len();
                     println!(
-                        "Expected {} results, but got {}. Retrying...",
-                        num_expected,
-                        search_results.len()
+                        "Expected {num_expected} results, but got {num_results}. Retrying...{search_url}",
                     );
                 }
             }
 
             // Check if we've exceeded the timeout
             if start_time.elapsed() >= timeout_duration {
-                // Return empty results if timeout is reached
                 panic!("Search request timed out after 10 seconds");
             }
 
@@ -132,6 +129,18 @@ pub mod common {
         .execute(pool)
         .await
         .expect("unable to insert test data");
+    }
+
+    pub async fn update_row(pool: &sqlx::PgPool, table: &str, id: i32, content: &str) {
+        sqlx::query(
+            format!(
+                "update vectorize_test.{table} set content = '{content}', updated_at = now() where id = {id};"
+            )
+            .as_str(),
+        )
+        .execute(pool)
+        .await
+        .expect("unable to update test data");
     }
 
     pub fn exec_psql(conn_string: &str, sql_content: &str) {

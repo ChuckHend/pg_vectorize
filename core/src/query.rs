@@ -343,6 +343,41 @@ $$ LANGUAGE plpgsql;"
         .to_string()
 }
 
+pub fn create_batch_texts_fn() -> String {
+    "CREATE OR REPLACE FUNCTION vectorize.batch_texts(
+    record_ids text[],
+    batch_size integer
+) RETURNS TABLE(batch text[]) AS $$
+DECLARE
+    total_records integer;
+    num_batches integer;
+    i integer;
+    start_idx integer;
+    end_idx integer;
+BEGIN
+    total_records := array_length(record_ids, 1);
+    
+    -- Handle edge cases
+    IF batch_size <= 0 OR total_records IS NULL OR total_records <= batch_size THEN
+        RETURN QUERY SELECT record_ids;
+        RETURN;
+    END IF;
+    
+    -- Calculate number of batches needed
+    num_batches := (total_records + batch_size - 1) / batch_size;
+    
+    -- Create batches
+    FOR i IN 0..(num_batches - 1) LOOP
+        start_idx := i * batch_size + 1; -- PostgreSQL arrays are 1-indexed
+        end_idx := LEAST(start_idx + batch_size - 1, total_records);
+        
+        RETURN QUERY SELECT record_ids[start_idx:end_idx];
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;"
+        .to_string()
+}
+
 // creates the trigger for a row update
 // these triggers use transition tables
 // transition tables cannot be specified for triggers with more than one event

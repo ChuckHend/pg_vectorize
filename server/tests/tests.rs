@@ -70,17 +70,35 @@ async fn test_search_server() {
     assert_eq!(search_results.len(), 1);
     assert_eq!(search_results[0]["content"].as_str().unwrap(), "pencil");
 
-    // test insert
     let cfg = vectorize_core::config::Config::from_env();
-
     let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
+
+    // test insert
     common::insert_row(&pool, &table, "apples and apple trees").await;
-    let params = format!("job_name={job_name}&query=apples");
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let params = format!("job_name={job_name}&query=apples&limit=1");
     let search_results = common::search_with_retry(&params, 1).await.unwrap();
     assert_eq!(search_results.len(), 1);
     assert_eq!(
         search_results[0]["content"].as_str().unwrap(),
         "apples and apple trees"
+    );
+
+    // test update
+    common::update_row(
+        &pool,
+        &table,
+        1,
+        "a space shuttle is a device for storing and transporting astronauts",
+    )
+    .await;
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let params = format!("job_name={job_name}&query=astronauts&limit=1");
+    let search_results = common::search_with_retry(&params, 1).await.unwrap();
+    assert_eq!(search_results.len(), 1);
+    assert_eq!(
+        search_results[0]["content"].as_str().unwrap(),
+        "a space shuttle is a device for storing and transporting astronauts"
     );
 }
 

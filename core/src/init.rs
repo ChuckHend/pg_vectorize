@@ -19,6 +19,7 @@ pub async fn init_project(pool: &PgPool) -> Result<(), VectorizeError> {
         query::handle_table_update(),
         "ALTER SYSTEM SET vectorize.batch_size = 10000;".to_string(),
         "SELECT pg_reload_conf();".to_string(),
+        query::create_batch_texts_fn(),
     ];
     for s in statements {
         sqlx::query(&s).execute(pool).await?;
