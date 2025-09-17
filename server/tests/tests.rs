@@ -230,6 +230,11 @@ async fn test_lifecycle() {
     let response: JobResponse = resp.json().await.expect("Failed to parse response");
     assert!(!response.id.is_nil(), "Job ID should not be nil");
 
+    // invalid job name should return 400
+    let params = format!("job_name=invalid_job_name&query=food");
+    let search_results = common::search_with_retry(&params, 3).await.unwrap();
+    assert_eq!(search_results.len(), 0);
+
     // sleep for 2 seconds
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 

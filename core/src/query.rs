@@ -1,6 +1,7 @@
+use crate::errors::VectorizeError;
 use crate::transformers::types::Inputs;
 use crate::types::{self, JobParams};
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use serde::Serialize;
 use sqlx::error::Error;
 use sqlx::postgres::PgRow;
@@ -71,14 +72,17 @@ fn generate_column_concat(src_columns: &[String], prefix: &str) -> String {
 
 // errors if input contains non-alphanumeric characters or underscore
 // in other worse - valid column names only
-pub fn check_input(input: &str) -> Result<()> {
-    let valid = input
+pub fn check_input(input: &str) -> Result<(), VectorizeError> {
+    let valid: bool = input
         .as_bytes()
         .iter()
         .all(|&c| c.is_ascii_alphanumeric() || c == b'_');
     match valid {
         true => Ok(()),
-        false => Err(anyhow!("Invalid Input: {}", input)),
+        false => Err(VectorizeError::InputError(format!(
+            "Invalid Input: {}",
+            input
+        ))),
     }
 }
 

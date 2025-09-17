@@ -17,6 +17,9 @@ pub enum DatabaseError {
 
 #[derive(Error, Debug)]
 pub enum VectorizeError {
+    // invalid input
+    #[error("Invalid input: {0}")]
+    InputError(String),
     #[error("Database error: {0}")]
     DatabaseError(#[from] DatabaseError),
     #[error("SQL error: {0}")]

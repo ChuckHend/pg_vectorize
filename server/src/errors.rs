@@ -68,6 +68,9 @@ impl Serialize for ErrorResponse {
 impl ResponseError for ServerError {
     fn error_response(&self) -> HttpResponse {
         let resp = match self {
+            ServerError::VectorizeError(errors::VectorizeError::InputError(_)) => {
+                ErrorResponse::BadRequest(self.to_string())
+            }
             ServerError::InvalidRequest(_) => ErrorResponse::BadRequest(self.to_string()),
             ServerError::NotFoundError(_) => ErrorResponse::NotFound(self.to_string()),
             _ => ErrorResponse::InternalServerError(
@@ -77,7 +80,10 @@ impl ResponseError for ServerError {
         HttpResponse::build(self.status_code()).json(resp)
     }
     fn status_code(&self) -> StatusCode {
-        match *self {
+        match self {
+            ServerError::VectorizeError(errors::VectorizeError::InputError(_)) => {
+                StatusCode::BAD_REQUEST
+            }
             ServerError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
             ServerError::NotFoundError(_) => StatusCode::NOT_FOUND,
             _ => {
