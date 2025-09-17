@@ -106,7 +106,17 @@ pub async fn search(
                 "Job not found in cache, querying database for job: {}",
                 payload.job_name
             );
-            vectorize_core::db::get_vectorize_job(&pool, &payload.job_name).await?
+            let job = vectorize_core::db::get_vectorize_job(&pool, &payload.job_name).await;
+            match job {
+                Ok(Some(job)) => job,
+                Ok(None) => {
+                    return Err(ServerError::NotFoundError(format!(
+                        "Job not found: {}",
+                        payload.job_name
+                    )));
+                }
+                Err(e) => return Err(ServerError::from(e)),
+            }
         }
     };
 

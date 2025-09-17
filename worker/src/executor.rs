@@ -61,7 +61,9 @@ async fn execute_job(pool: &PgPool, msg: Message<JobMessage>) -> Result<(), Vect
     let bpe = cl100k_base().unwrap();
 
     let job_name = msg.message.job_name.clone();
-    let vectorizejob = db::get_vectorize_job(pool, &job_name).await?;
+    let vectorizejob = db::get_vectorize_job(pool, &job_name)
+        .await?
+        .ok_or_else(|| VectorizeError::InputError(format!("job not found in db: {job_name}")))?;
     log::debug!("Retrieved vectorize job: {vectorizejob:?}");
     let provider = providers::get_provider(&vectorizejob.model.source, None, None, None)?;
 
