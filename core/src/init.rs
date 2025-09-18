@@ -12,18 +12,13 @@ pub async fn init_project(pool: &PgPool) -> Result<(), VectorizeError> {
     init_pgmq(pool).await?;
 
     let statements = vec![
-        "CREATE SCHEMA IF NOT EXISTS vectorize;".to_string(),
         "CREATE EXTENSION IF NOT EXISTS vector;".to_string(),
-        query::create_vectorize_table(),
         "SELECT pgmq.create('vectorize_jobs');".to_string(),
-        query::handle_table_update(),
-        "ALTER SYSTEM SET vectorize.batch_size = 10000;".to_string(),
-        "SELECT pg_reload_conf();".to_string(),
-        query::create_batch_texts_fn(),
     ];
     for s in statements {
         sqlx::query(&s).execute(pool).await?;
     }
+    init_vectorize(pool).await?;
 
     Ok(())
 }
@@ -65,6 +60,36 @@ async fn pgmq_schema_exists(pool: &PgPool) -> Result<bool, sqlx::Error> {
     .fetch_one(pool)
     .await?;
     Ok(row)
+}
+
+async fn vectorize_schema_exists(pool: &PgPool) -> Result<bool, sqlx::Error> {
+    let row: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = 'vectorize')",
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn init_vectorize(pool: &PgPool) -> Result<(), VectorizeError> {
+    if vectorize_schema_exists(pool).await? {
+        log::info!("vectorize schema already exists, skipping initialization.");
+        return Ok(());
+    } else {
+        let statements = vec![
+            "CREATE SCHEMA IF NOT EXISTS vectorize;".to_string(),
+            query::create_vectorize_table(),
+            query::handle_table_update(),
+            "ALTER SYSTEM SET vectorize.batch_size = 10000;".to_string(),
+            "SELECT pg_reload_conf();".to_string(),
+            query::create_batch_texts_fn(),
+        ];
+        for s in statements {
+            sqlx::query(&s).execute(pool).await?;
+        }
+        log::info!("Installing vectorize...")
+    }
+    Ok(())
 }
 
 pub async fn init_pgmq(pool: &PgPool) -> Result<(), VectorizeError> {
