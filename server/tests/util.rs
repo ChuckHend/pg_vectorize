@@ -38,9 +38,26 @@ pub mod common {
             .connect(&cfg.database_url)
             .await
             .expect("unable to connect to postgres");
-        init::init_project(&pool)
-            .await
-            .expect("Failed to initialize project");
+        
+        // Try to initialize the project, but don't fail if it's already initialized
+        // This handles the case where tests run against a running server that has already initialized the project
+        match init::init_project(&pool).await {
+            Ok(_) => {
+                // Initialization successful
+            }
+            Err(e) => {
+                // Check if the error is due to concurrent initialization
+                if e.to_string().contains("tuple concurrently updated") || 
+                   e.to_string().contains("already exists") ||
+                   e.to_string().contains("duplicate key") {
+                    // Project is already initialized, which is fine for tests
+                    log::info!("Project already initialized, continuing with test");
+                } else {
+                    // Some other error occurred
+                    panic!("Failed to initialize project: {}", e);
+                }
+            }
+        }
     }
 
     // Helper function to perform search requests with retry logic
