@@ -114,10 +114,13 @@ async fn test_search_filters() {
     let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
     // test table
     let table = format!("test_filter_{test_num}");
+    let drop_sql = format!("DROP TABLE IF EXISTS public.{table};");
     let create_sql =
         format!("CREATE TABLE public.{table} (LIKE public.my_products INCLUDING ALL);");
     let insert_sql = format!("INSERT INTO public.{table} SELECT * FROM public.my_products;");
 
+    sqlx::query(&drop_sql).execute(&pool).await.unwrap();
+    sqlx::query(&create_sql).execute(&pool).await.unwrap();
     sqlx::query(&create_sql).execute(&pool).await.unwrap();
     sqlx::query(&insert_sql).execute(&pool).await.unwrap();
 
@@ -229,6 +232,14 @@ async fn test_lifecycle() {
 
     let response: JobResponse = resp.json().await.expect("Failed to parse response");
     assert!(!response.id.is_nil(), "Job ID should not be nil");
+
+    // request a job that does not exist should be a 404
+    let resp = client
+        .get("http://localhost:8080/api/v1/search?job_name=does_not_exist")
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
 
     // sleep for 2 seconds
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;

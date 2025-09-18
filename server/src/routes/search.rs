@@ -1,7 +1,7 @@
 use crate::errors::ServerError;
 use actix_web::{HttpResponse, get, web};
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Row, prelude::FromRow};
+use sqlx::{FromRow, PgPool, Row};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -106,7 +106,7 @@ pub async fn search(
                 "Job not found in cache, querying database for job: {}",
                 payload.job_name
             );
-            vectorize_core::db::get_vectorize_job(&pool, &payload.job_name).await?
+            get_vectorize_job(&pool, &payload.job_name).await?
         }
     };
 
@@ -157,4 +157,23 @@ pub async fn search(
         .collect();
 
     Ok(HttpResponse::Ok().json(json_results))
+}
+
+async fn get_vectorize_job(pool: &PgPool, job_name: &str) -> Result<VectorizeJob, ServerError> {
+    // Changed return type
+    match sqlx::query(
+        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model 
+         FROM vectorize.job 
+         WHERE job_name = $1",
+    )
+    .bind(job_name)
+    .fetch_optional(pool)
+    .await?
+    {
+        Some(row) => Ok(VectorizeJob::from_row(&row)?),
+        None => Err(ServerError::NotFoundError(format!(
+            "Job not found: {}",
+            job_name
+        ))),
+    }
 }
