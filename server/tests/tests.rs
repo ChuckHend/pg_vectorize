@@ -121,7 +121,6 @@ async fn test_search_filters() {
 
     sqlx::query(&drop_sql).execute(&pool).await.unwrap();
     sqlx::query(&create_sql).execute(&pool).await.unwrap();
-    sqlx::query(&create_sql).execute(&pool).await.unwrap();
     sqlx::query(&insert_sql).execute(&pool).await.unwrap();
 
     // initialize search job
