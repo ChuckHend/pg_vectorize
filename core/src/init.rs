@@ -76,16 +76,29 @@ pub async fn init_vectorize(pool: &PgPool) -> Result<(), VectorizeError> {
         log::info!("vectorize schema already exists, skipping initialization.");
         return Ok(());
     } else {
-        let statements = vec![
+        // these statements are critical, so we fail if they error
+        let statements_nofail = vec![
             "CREATE SCHEMA IF NOT EXISTS vectorize;".to_string(),
             query::create_vectorize_table(),
             query::handle_table_update(),
-            "ALTER SYSTEM SET vectorize.batch_size = 10000;".to_string(),
-            "SELECT pg_reload_conf();".to_string(),
             query::create_batch_texts_fn(),
         ];
-        for s in statements {
+        // these statements are not critical, so we log warnings and continue
+        let statements_failable = vec![
+            "ALTER SYSTEM SET vectorize.batch_size = 10000;".to_string(),
+            "SELECT pg_reload_conf();".to_string(),
+        ];
+        for s in statements_nofail {
             sqlx::query(&s).execute(pool).await?;
+        }
+        for s in statements_failable.into_iter() {
+            match sqlx::query(&s).execute(pool).await {
+                Ok(_) => {}
+                Err(e) => {
+                    let errmsg = format!("Warning: failed to execute statement: {s}, error: {e}");
+                    log::warn!("{errmsg}");
+                }
+            }
         }
         log::info!("Installing vectorize...")
     }
