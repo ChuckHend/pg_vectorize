@@ -322,7 +322,10 @@ DECLARE
     job_messages jsonb[] := '{}';
 BEGIN
     -- create jobs of size batch_size
-    batch_size := current_setting('vectorize.batch_size')::integer;
+    batch_size := coalesce(
+        current_setting('vectorize.batch_size', true)::integer,
+        1000 -- default batch size
+    );
     FOR batch_result IN SELECT batch FROM vectorize.batch_texts(record_ids, batch_size) LOOP
         job_messages := array_append(
             job_messages,
