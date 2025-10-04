@@ -14,18 +14,22 @@ theme:
         name: light mode
 nav:
   - Vectorize: 'index.md'
-  - API: 
-    - Overview: 'api/index.md'
-    - 'api/search.md'
-    - 'api/rag.md'
-    - 'api/utilities.md'
-  - Examples: 
-    - Search:
-      - 'examples/sentence_transformers.md'
-      - 'examples/openai_embeddings.md'
-      - 'examples/scheduling.md'
-  - Model Providers: 'models/index.md'
-  - Extension Configuration: 'configuration.md'
+  - Server:
+    - API:
+      - Table: 'server/api/table.md'
+      - Search: 'server/api/search.md'
+  - Extension:
+    - API:
+      - Overview: 'extension/api/index.md'
+      - Search: 'extension/api/search.md'
+      - RAG: 'extension/api/rag.md'
+      - Utilities: 'extension/api/utilities.md'
+    - Model Providers: 'extension/models/index.md'
+    - Examples:
+      - Search:
+        - Sentence Transformers: 'extension/examples/sentence_transformers.md'
+        - OpenAI Embeddings: 'extension/examples/openai_embeddings.md'
+        - Scheduling: 'extension/examples/scheduling.md'
 markdown_extensions:
 - toc:
     permalink: true

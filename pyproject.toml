@@ -1,22 +1,18 @@
-[tool.poetry]
+[project]
 name = "pg-vectorize"
 version = "0.1.0"
 description = "Dependencies for MkDocs"
-authors = ["Tembo <engineering@tembo.io>"]
 readme = "README.md"
+requires-python = ">=3.12"
 
-[tool.poetry.dependencies]
-python = "^3.10"
-markdown-include = "^0.8.1"
-mkdocs = "^1.4.2"
-mkdocs-material = "^7.3.6"
-mdx-include = "^1.4.1"
-mkdocs-markdownextradata-plugin = "^0.2.4"
-mkdocstrings = "^0.16.2"
-MarkupSafe = "2.0.1"
-Jinja2 = "<3.0.0"
-pymdown-extensions = "^9.9.2"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+dependencies = [
+	"markdown-include>=0.8.1,<0.9.0",
+	"mkdocs>=1.6,<2.0",
+	"mkdocs-material>=9,<10.0",
+	"mdx-include>=1.4.1,<2.0",
+	"mkdocs-markdownextradata-plugin>=0.2.6,<1.0",
+	"mkdocstrings>=0.30.1,<1.0",
+	"MarkupSafe==3.0.3",
+	"Jinja2>3",
+	"pymdown-extensions>=10,<11.0",
+]

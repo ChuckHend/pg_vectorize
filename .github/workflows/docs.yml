@@ -10,14 +10,16 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v2
-        with:
-          python-version: 3.11
-      - run: curl -sSL https://install.python-poetry.org | POETRY_VERSION=1.7.1 python3 -
-      - run: poetry install
+      - uses: actions/checkout@v5
 
-      - name: deploy docs
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install the project
+        run: uv sync
+
+      - name: Publish docs to GitHub Pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: poetry run mkdocs gh-deploy --force
+        run: |
+          uv run mkdocs gh-deploy --force

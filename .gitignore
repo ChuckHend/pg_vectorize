@@ -11,4 +11,4 @@ test.sql
 META.json
 /vectorize-*
 site/
-poetry.lock
+uv.lock
