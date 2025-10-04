@@ -12,14 +12,14 @@ on:
     paths-ignore:
       - "README.md"
       - docs/**
-      - ".github/workflows/server_ci.yml"
+      - ".github/workflows/extension_ci.yml"
   push:
     branches:
       - main
     paths-ignore:
       - "README.md"
       - docs/**
-      - ".github/workflows/server_ci.yml"
+      - ".github/workflows/extension_ci.yml"
   release:
     types:
       - created

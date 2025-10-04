@@ -19,9 +19,7 @@ on:
       - "extension/**"
       - "images/vectorize-pg/**"
       - ".github/workflows/pg-image-build.yml"
-  release:
-    types:
-      - created
+    tags: ['extension-v[0-9]+.[0-9]+.[0-9]+']
 jobs:
   build_and_push_amd64:
     name: Build and push AMD64 images
