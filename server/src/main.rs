@@ -29,6 +29,13 @@ async fn main() {
         .connect(&cfg.database_url)
         .await
         .expect("unable to connect to postgres");
+    
+    // Create a separate connection pool for cache refresher
+    let cache_pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&cfg.database_url)
+        .await
+        .expect("unable to connect to postgres for cache refresher");
     let server_port = cfg.webserver_port;
     let server_workers = cfg.num_server_workers;
     init::init_project(&pool, Some(&cfg.database_url))
@@ -49,9 +56,10 @@ async fn main() {
     let proxy_pool = pool.clone();
     let proxy_cfg = cfg.clone();
     let proxy_jobmap = Arc::clone(&jobmap);
+    let proxy_cache_pool = cache_pool.clone();
     if cfg.proxy_enabled {
         tokio::spawn(async move {
-            if let Err(e) = start_postgres_proxy(proxy_cfg, proxy_pool, proxy_jobmap).await {
+            if let Err(e) = start_postgres_proxy(proxy_cfg, proxy_pool, proxy_jobmap, proxy_cache_pool).await {
                 error!("Failed to start PostgreSQL proxy: {e}");
             }
         });
@@ -97,6 +105,7 @@ async fn start_postgres_proxy(
     cfg: Config,
     pool: sqlx::PgPool,
     jobmap: Arc<RwLock<HashMap<String, VectorizeJob>>>,
+    cache_pool: sqlx::PgPool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let bind_address = "0.0.0.0";
     let timeout = 30;
@@ -116,15 +125,23 @@ async fn start_postgres_proxy(
     let config = Arc::new(ProxyConfig {
         postgres_addr,
         timeout: Duration::from_secs(timeout),
-        jobmap,
+        jobmap: Arc::clone(&jobmap),
         db_pool: pool.clone(),
+        prepared_statements: Arc::new(RwLock::new(HashMap::new())),
+    });
+
+    // Create a separate config for cache sync listener with its own connection pool
+    let config_for_sync = Arc::new(ProxyConfig {
+        postgres_addr,
+        timeout: Duration::from_secs(timeout),
+        jobmap: Arc::clone(&jobmap),
+        db_pool: cache_pool.clone(),
         prepared_statements: Arc::new(RwLock::new(HashMap::new())),
     });
 
     info!("Proxy listening on: {listen_addr}");
     info!("Forwarding to PostgreSQL at: {postgres_addr}");
 
-    let config_for_sync = Arc::clone(&config);
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(1)).await;
         if let Err(e) = start_cache_sync_listener(config_for_sync).await {

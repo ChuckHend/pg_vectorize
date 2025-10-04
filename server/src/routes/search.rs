@@ -2,7 +2,7 @@ use crate::errors::ServerError;
 use actix_web::{HttpResponse, get, web};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row, prelude::FromRow};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use utoipa::ToSchema;
@@ -27,7 +27,7 @@ pub struct SearchRequest {
     #[serde(default = "default_fts_wt")]
     pub fts_wt: f32,
     #[serde(flatten, default)]
-    pub filters: HashMap<String, query::FilterValue>,
+    pub filters: BTreeMap<String, query::FilterValue>,
 }
 
 fn default_semantic_wt() -> f32 {
@@ -95,18 +95,22 @@ pub async fn search(
         }
     }
 
-    // Try to get job info from cache first, fallback to database
+    // Try to get job info from cache first, fallback to database with write-through on miss
     let vectorizejob = {
-        let job_cache = jobmap.read().await;
-        if let Some(job_info) = job_cache.get(&payload.job_name) {
-            job_info.clone()
+        if let Some(job_info) = {
+            let job_cache = jobmap.read().await;
+            job_cache.get(&payload.job_name).cloned()
+        } {
+            job_info
         } else {
-            // cache miss is going to either be an invalid job name, or there is an issue with the cache
             log::warn!(
                 "Job not found in cache, querying database for job: {}",
                 payload.job_name
             );
-            vectorize_core::db::get_vectorize_job(&pool, &payload.job_name).await?
+            let job = vectorize_core::db::get_vectorize_job(&pool, &payload.job_name).await?;
+            let mut job_cache = jobmap.write().await;
+            job_cache.insert(payload.job_name.clone(), job.clone());
+            job
         }
     };
 
@@ -126,26 +130,35 @@ pub async fn search(
     let embedding_request = prepare_generic_embedding_request(&vectorizejob.model, &[input]);
     let embeddings = provider.generate_embedding(&embedding_request).await?;
 
+    // Cap window size to prevent excessive inner result sets
+    const MAX_WINDOW_SIZE: i32 = 500;
+    let effective_window_size = payload.window_size.clamp(1, MAX_WINDOW_SIZE);
+
+    // Convert filters to HashMap for the core query builder, and reuse the same
+    // instance for binding to keep iteration order consistent within this call.
+    let filters_hm: HashMap<String, query::FilterValue> =
+        payload.filters.clone().into_iter().collect();
+
     let q = query::hybrid_search_query(
         &payload.job_name,
         &vectorizejob.src_schema,
         &vectorizejob.src_table,
         &vectorizejob.primary_key,
         &["*".to_string()],
-        payload.window_size,
+        effective_window_size,
         payload.limit,
         payload.rrf_k,
         payload.semantic_wt,
         payload.fts_wt,
-        &payload.filters,
+        &filters_hm,
     );
 
     let mut prepared_query = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
         .bind(&payload.query);
 
-    // bind filter values in the same order they were processed in hybrid_search_query
-    for value in payload.filters.values() {
+    // Bind filter values using the same HashMap instance used by the query builder
+    for value in filters_hm.values() {
         prepared_query = value.bind_to_query(prepared_query);
     }
 
