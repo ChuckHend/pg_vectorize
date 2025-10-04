@@ -30,7 +30,8 @@ services:
     restart: always
     logging: *default-logging
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     image: ghcr.io/chuckhend/vectorize-server:latest
     ports:
       - 8080:8080 # http server

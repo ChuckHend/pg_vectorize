@@ -620,10 +620,10 @@ pub fn hybrid_search_query(
                     COUNT(*) OVER () as max_fts_rank
                 FROM vectorize._search_tokens_{job_name}, 
                      to_tsquery('english', 
-                         CASE 
-                             WHEN trim($2) = '' THEN ''
-                             ELSE replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')
-                         END
+                         NULLIF(
+                             replace(plainto_tsquery('english', $2)::text, ' & ', ' | '),
+                             ''
+                         )
                      ) as query
                 WHERE search_tokens @@ query
                 ORDER BY ts_rank_cd(search_tokens, query) DESC 
