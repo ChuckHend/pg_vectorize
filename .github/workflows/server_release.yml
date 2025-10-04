@@ -94,23 +94,26 @@ jobs:
         id: tag
         run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: Create and push Docker manifest -- Tag
+  
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create and push Docker manifest — Version and latest
         run: |
-          docker manifest create \
-            ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }} \
+          # Create a multi-arch image manifest for the version tag
+          docker buildx imagetools create \
+            --tag ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }} \
             ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-arm64 \
             ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-amd64
 
-          docker manifest annotate ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }} ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-arm64 --arch arm64 --os linux
-          docker manifest annotate ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }} ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-amd64 --arch amd64 --os linux
-          docker manifest push ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}
+          # Inspect the created version manifest to ensure it's correct
+          docker buildx imagetools inspect ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}
 
-          # Also create/push a "latest" multi-arch manifest pointing at the per-arch latest tags
-          docker manifest create \
-            ghcr.io/chuckhend/vectorize-server:latest \
+          # Create/update the 'latest' multi-arch manifest pointing to the architecture-specific latest tags
+          docker buildx imagetools create \
+            --tag ghcr.io/chuckhend/vectorize-server:latest \
             ghcr.io/chuckhend/vectorize-server:latest-arm64 \
             ghcr.io/chuckhend/vectorize-server:latest-amd64
 
-          docker manifest annotate ghcr.io/chuckhend/vectorize-server:latest ghcr.io/chuckhend/vectorize-server:latest-arm64 --arch arm64 --os linux
-          docker manifest annotate ghcr.io/chuckhend/vectorize-server:latest ghcr.io/chuckhend/vectorize-server:latest-amd64 --arch amd64 --os linux
-          docker manifest push ghcr.io/chuckhend/vectorize-server:latest
+          # Inspect the created latest manifest
+          docker buildx imagetools inspect ghcr.io/chuckhend/vectorize-server:latest
