@@ -69,6 +69,37 @@ async fn test_search_server() {
     let search_results = common::search_with_retry(&params, 1).await.unwrap();
     assert_eq!(search_results.len(), 1);
     assert_eq!(search_results[0]["content"].as_str().unwrap(), "pencil");
+
+    let cfg = vectorize_core::config::Config::from_env();
+    let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
+
+    // test insert
+    common::insert_row(&pool, &table, "apples and apple trees").await;
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let params = format!("job_name={job_name}&query=apples&limit=1");
+    let search_results = common::search_with_retry(&params, 1).await.unwrap();
+    assert_eq!(search_results.len(), 1);
+    assert_eq!(
+        search_results[0]["content"].as_str().unwrap(),
+        "apples and apple trees"
+    );
+
+    // test update
+    common::update_row(
+        &pool,
+        &table,
+        1,
+        "a space shuttle is a device for storing and transporting astronauts",
+    )
+    .await;
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let params = format!("job_name={job_name}&query=astronauts&limit=1");
+    let search_results = common::search_with_retry(&params, 1).await.unwrap();
+    assert_eq!(search_results.len(), 1);
+    assert_eq!(
+        search_results[0]["content"].as_str().unwrap(),
+        "a space shuttle is a device for storing and transporting astronauts"
+    );
 }
 
 #[ignore]
@@ -83,10 +114,12 @@ async fn test_search_filters() {
     let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
     // test table
     let table = format!("test_filter_{test_num}");
+    let drop_sql = format!("DROP TABLE IF EXISTS public.{table};");
     let create_sql =
         format!("CREATE TABLE public.{table} (LIKE public.my_products INCLUDING ALL);");
     let insert_sql = format!("INSERT INTO public.{table} SELECT * FROM public.my_products;");
 
+    sqlx::query(&drop_sql).execute(&pool).await.unwrap();
     sqlx::query(&create_sql).execute(&pool).await.unwrap();
     sqlx::query(&insert_sql).execute(&pool).await.unwrap();
 
@@ -198,6 +231,14 @@ async fn test_lifecycle() {
 
     let response: JobResponse = resp.json().await.expect("Failed to parse response");
     assert!(!response.id.is_nil(), "Job ID should not be nil");
+
+    // request a job that does not exist should be a 404
+    let resp = client
+        .get("http://localhost:8080/api/v1/search?job_name=does_not_exist")
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
 
     // sleep for 2 seconds
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
