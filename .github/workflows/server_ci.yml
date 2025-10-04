@@ -162,13 +162,16 @@ jobs:
         id: versions
         run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Create and push Docker manifest -- Commit
         run: |
-          docker manifest create \
-            ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }} \
+          # Create a multi-arch image manifest from the two architecture-specific tags
+          docker buildx imagetools create \
+            --tag ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }} \
             ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }}-arm64 \
             ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }}-amd64
 
-          docker manifest annotate ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }} ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }}-arm64 --arch arm64 --os linux
-          docker manifest annotate ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }} ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }}-amd64 --arch amd64 --os linux
-          docker manifest push ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }}
+          # Inspect the created manifest to ensure it's correct
+          docker buildx imagetools inspect ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }}
