@@ -1,0 +1,104 @@
+name: Vectorize Server Release (tag)
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+jobs:
+  build_and_push_amd64:
+    name: Build and push AMD64 images (tag)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract tag
+        id: tag
+        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Set version strings
+        id: versions
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push -- Tag
+        run: |
+            docker build \
+                -f ./server/Dockerfile \
+                -t ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-amd64 .
+            docker push ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-amd64
+
+  build_and_push_arm64:
+    name: Build and push ARM64 images (tag)
+    runs-on: ubicloud-standard-2-arm-ubuntu-2204
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract tag
+        id: tag
+        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Set version strings
+        id: versions
+        run: echo "SHORT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push -- Tag
+        run: |
+            docker build \
+                -f ./server/Dockerfile \
+                --platform linux/arm64 \
+                -t ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-arm64 .
+            docker push ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-arm64
+
+  create_manifest:
+    name: Create and Push Manifest (tag)
+    runs-on: ubuntu-latest
+    needs: [build_and_push_arm64, build_and_push_amd64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract tag
+        id: tag
+        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create and push Docker manifest -- Tag
+        run: |
+          docker manifest create \
+            ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }} \
+            ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-arm64 \
+            ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-amd64
+
+          docker manifest annotate ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }} ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-arm64 --arch arm64 --os linux
+          docker manifest annotate ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }} ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-amd64 --arch amd64 --os linux
+          docker manifest push ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}
