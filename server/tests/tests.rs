@@ -9,7 +9,6 @@ use util::common;
 use vectorize_server::routes::table::JobResponse;
 // these tests require the following main server, vector-serve, and Postgres to be running
 // easiest way is to use the docker-compose file in the root of the project
-#[ignore]
 #[tokio::test]
 async fn test_search_server() {
     common::init_test_environment().await;
@@ -102,7 +101,6 @@ async fn test_search_server() {
     );
 }
 
-#[ignore]
 #[tokio::test]
 async fn test_search_filters() {
     let mut rng = rand::rng();
@@ -175,9 +173,10 @@ async fn test_search_filters() {
     );
 }
 
+/// proxy is an incomplete feature
 #[ignore]
 #[tokio::test]
-async fn test_lifecycle() {
+async fn test_proxy() {
     // Initialize the project (database setup, etc.) without creating test app
     common::init_test_environment().await;
 
@@ -282,21 +281,84 @@ async fn test_lifecycle() {
 
     // test prepared statements
     // Use parameter binding instead of string formatting
-    // let row = sqlx::query("SELECT vectorize.embed('food'::text, $1);")
-    //     .bind(&job_name)
-    //     .fetch_one(&pool)
-    //     .await
-    //     .unwrap();
-    // let result_str: String = row.get(0);
-    // let result_str = result_str.trim_start_matches('[').trim_end_matches(']');
-    // let values: Vec<f64> = result_str
-    //     .split(',')
-    //     .map(|s| s.trim().parse::<f64>().unwrap())
-    //     .collect();
-    // assert_eq!(values.len(), 384); // sentence-transformers/all-MiniLM-L6-v2 has 384 dimensions
+    let row = sqlx::query("SELECT vectorize.embed('food'::text, $1);")
+        .bind(&job_name)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let result_str: String = row.get(0);
+    let result_str = result_str.trim_start_matches('[').trim_end_matches(']');
+    let values: Vec<f64> = result_str
+        .split(',')
+        .map(|s| s.trim().parse::<f64>().unwrap())
+        .collect();
+    assert_eq!(values.len(), 384); // sentence-transformers/all-MiniLM-L6-v2 has 384 dimensions
 }
 
-#[ignore]
+#[tokio::test]
+async fn test_lifecycle() {
+    // Initialize the project (database setup, etc.) without creating test app
+    common::init_test_environment().await;
+
+    // Create test table with required columns
+    let table = common::create_test_table().await;
+
+    let job_name = format!("test_job_{table}");
+
+    // Create a valid VectorizeJob payload
+    let payload = json!({
+        "job_name": job_name,
+        "src_table": table,
+        "src_schema": "vectorize_test",
+        "src_columns": ["content"],
+        "primary_key": "id",
+        "update_time_col": "updated_at",
+        "model": "sentence-transformers/all-MiniLM-L6-v2"
+    });
+
+    // Use reqwest to make HTTP request to running server
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("http://localhost:8080/api/v1/table")
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "Response status: {:?}",
+        resp.status()
+    );
+
+    let response: JobResponse = resp.json().await.expect("Failed to parse response");
+    assert!(!response.id.is_nil(), "Job ID should not be nil");
+
+    // request a job that does not exist should be a 404
+    let resp = client
+        .get("http://localhost:8080/api/v1/search?job_name=does_not_exist")
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    // sleep for 2 seconds
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // test searching the job
+    let params = format!("job_name={job_name}&query=food");
+    let search_results = common::search_with_retry(&params, 3).await.unwrap();
+
+    // Should return 3 results
+    assert_eq!(search_results.len(), 3);
+
+    // First result should be pizza (highest similarity)
+    assert_eq!(search_results[0]["content"].as_str().unwrap(), "pizza");
+    assert!(search_results[0]["similarity_score"].as_f64().unwrap() > 0.5);
+}
+
 #[tokio::test]
 async fn test_health_monitoring() {
     // Initialize the test environment without creating test app

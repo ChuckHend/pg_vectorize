@@ -4,19 +4,40 @@ x-logging: &default-logging
     max-size: 10m
     max-file: 50
 
+x-env: &default-env
+  OPENAI_API_KEY: ${OPENAI_API_KEY}
+  CO_API_KEY: ${CO_API_KEY}
+  VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+  DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/postgres}
+  EMBEDDING_SVC_URL: ${EMBEDDING_SVC_URL:-http://vector-serve:3000/v1}
+
+
 services:
+  postgres:
+    restart: always
+    logging: *default-logging
+    environment:
+      POSTGRES_PASSWORD: postgres
+    image: pgvector/pgvector:0.8.1-pg18
+    ports:
+      - 5432:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
   server:
     restart: always
     logging: *default-logging
     depends_on:
       - vector-serve
-    image: ghcr.io/chuckhend/vectorize-server:latest
+    build:
+      dockerfile: server/Dockerfile
+      context: ../
     ports:
       - 8080:8080
     environment:
-      EMBEDDING_SVC_URL: ${EMBEDDING_SVC_URL:-http://vector-serve:3000/v1}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@host.docker.internal:5432/postgres}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      <<: *default-env
       RUST_LOG: ${RUST_LOG:-info}
     command: vectorize-server
   vector-serve:
@@ -26,4 +47,5 @@ services:
     ports:
       - 3000:3000
     environment:
+      <<: *default-env
       HF_API_KEY: ${HF_API_KEY}

@@ -93,10 +93,10 @@ pub mod common {
             .await
             .expect("unable to connect to postgres");
 
-        sqlx::query("create schema if not exists vectorize_test;")
+        // there is a race condition on create schema during test cases, so ignore errors
+        let _created = sqlx::query("create schema if not exists vectorize_test;")
             .execute(&pool)
-            .await
-            .expect("unable to create vectorize_test schema");
+            .await;
 
         let mut rng = rand::rng();
         let test_num = rng.random_range(1..1000);

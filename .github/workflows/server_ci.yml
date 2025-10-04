@@ -37,15 +37,9 @@ jobs:
       - name: start containers
         env:
           DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
-          VECTORIZE_PROXY_ENABLED: 1
         run: |
-          docker compose -f docker-compose.yml up postgres -d;
-          sleep 5;
-          docker compose -f docker-compose.yml up vector-serve server --build -d;
-      - name: Test Core
-        run: |
-          cargo test
-      - name: Test Core - Integration
+          make compose-server-up
+      - name: Test
         # skip when on external forks
         if: github.repository_owner == 'ChuckHend'
         env:
@@ -56,11 +50,12 @@ jobs:
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           DATABASE_URL: postgresql://postgres:postgres@0.0.0.0:5432/postgres
         run: |
-          cargo test -- --ignored
+          cd server
+          cargo test
       - name: debugging info
         if: failure()
         run: |
-          docker compose -f docker-compose.yml logs
+          docker compose -f server/docker-compose.yml logs
           docker ps
 
   build_and_push_amd64:
