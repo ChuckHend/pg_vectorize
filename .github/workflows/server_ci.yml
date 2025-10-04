@@ -39,9 +39,9 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@postgres:5432/postgres
           VECTORIZE_PROXY_ENABLED: 1
         run: |
-          docker compose -f docker-compose.server.yml up postgres -d;
+          docker compose -f docker-compose.yml up postgres -d;
           sleep 5;
-          docker compose -f docker-compose.server.yml up vector-serve server --build -d;
+          docker compose -f docker-compose.yml up vector-serve server --build -d;
       - name: Test Core
         run: |
           cargo test
@@ -60,7 +60,7 @@ jobs:
       - name: debugging info
         if: failure()
         run: |
-          docker compose -f docker-compose.server.yml logs
+          docker compose -f docker-compose.yml logs
           docker ps
 
   build_and_push_amd64:

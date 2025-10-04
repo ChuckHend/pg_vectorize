@@ -5,7 +5,6 @@ An HTTP server that sits in between your application and Postgres.
 ## See also
 
 - Top-level project overview: `../README.md`
-- Postgres extension (SQL) docs: `../extension/README.md`
 
 ## Features
 - Quickly sets up semantic and full text search on any Postgres table.
@@ -18,8 +17,8 @@ An HTTP server that sits in between your application and Postgres.
 Run Postgres and the HTTP servers in separate containers locally:
 
 ```bash
-# docker-compose.server.yml is located in the root of this repository
-docker compose -f docker-compose.server.yml up -d
+# docker-compose.yml is located in the root of this repository
+docker compose -f docker-compose.yml up -d
 ```
 
 There are three contains; postgres, a local embedding server, and the HTTP search service.
@@ -91,36 +90,6 @@ curl -X GET "http://localhost:8080/api/v1/search?job_name=my_job&query=camping%2
     "updated_at": "2025-06-25T19:57:22.410561+00:00"
   }
 ]
-```
-
-## SQL proxy example
-
-We can also use the SQL proxy to perform the same search query, but using SQL instead of the HTTP API. This is useful if you have additional joins are advanced SQL queries that you want to perform.
-
-Note that this query routes through the proxy on port 5433.
-
-```sql
-psql postgres://postgres:postgres@localhost:5433/postgres -c \
-"SELECT * FROM (
-    SELECT t0.*, t1.similarity_score
-    FROM (
-        SELECT
-            product_id,
-            1 - (embeddings <=> vectorize.embed('plants', 'my_job')) as similarity_score
-        FROM vectorize._embeddings_my_job
-        ) t1
-    INNER JOIN public.my_products t0 on t0.product_id = t1.product_id
-) t
-ORDER BY t.similarity_score DESC
-LIMIT 2;"
-```
-
-```plaintext
- product_id |   product_name   |                    description                    | product_category | price |          updated_at           |  similarity_score   
-------------+------------------+---------------------------------------------------+------------------+-------+-------------------------------+---------------------
-          8 | Plant Pot        | Container for holding plants, often with drainage | garden           | 12.00 | 2025-06-25 20:27:07.725765+00 | 0.46105278002586925
-         35 | Gardening Gloves | Handwear for protection during gardening tasks    | garden           |  8.00 | 2025-06-25 20:27:07.725765+00 |  0.2909192990160845
-(2 rows)
 ```
 
 ## Running on an existing Postgres instance

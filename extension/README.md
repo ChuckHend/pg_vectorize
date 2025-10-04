@@ -9,8 +9,6 @@ This project relies heavily on the work by [pgvector](https://github.com/pgvecto
 ---
 
 [![PGXN version](https://badge.fury.io/pg/vectorize.svg)](https://pgxn.org/dist/vectorize/)
-[![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/3815)](https://ossrank.com/p/3815)
-
 
 **API Documentation**: https://chuckhend.github.io/pg_vectorize/
 
