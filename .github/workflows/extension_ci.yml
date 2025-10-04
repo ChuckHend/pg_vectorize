@@ -9,17 +9,15 @@ on:
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - "README.md"
-      - docs/**
+    paths:
       - ".github/workflows/extension_ci.yml"
+      - "extension/**"
   push:
     branches:
       - main
-    paths-ignore:
-      - "README.md"
-      - docs/**
+    paths:
       - ".github/workflows/extension_ci.yml"
+      - "extension/**"
   release:
     types:
       - created

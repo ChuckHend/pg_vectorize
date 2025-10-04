@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "server/**"
+      - "worker/**"
       - "core/**"
       - ".github/workflows/server_ci.yml"
   push:
@@ -13,6 +14,7 @@ on:
       - main
     paths:
       - "server/**"
+      - "worker/**"
       - "core/**"
       - ".github/workflows/server_ci.yml"
 
