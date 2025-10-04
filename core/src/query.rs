@@ -5,7 +5,7 @@ use serde::Serialize;
 use sqlx::error::Error;
 use sqlx::postgres::PgRow;
 use sqlx::{Postgres, Row};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tiktoken_rs::cl100k_base;
 pub const VECTORIZE_SCHEMA: &str = "vectorize";
 static TRIGGER_FN_PREFIX: &str = "vectorize.handle_update_";
@@ -560,7 +560,7 @@ pub fn hybrid_search_query(
     rrf_k: f32,
     semantic_weight: f32,
     fts_weight: f32,
-    filters: &HashMap<String, FilterValue>,
+    filters: &BTreeMap<String, FilterValue>,
 ) -> String {
     let cols = &return_columns
         .iter()

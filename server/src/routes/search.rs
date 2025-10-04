@@ -82,9 +82,10 @@ pub async fn search(
     payload: web::Query<SearchRequest>,
 ) -> Result<HttpResponse, ServerError> {
     let payload = payload.into_inner();
-    query::check_input(&payload.job_name)?;
 
-    // check the filters are valid if they exist and create a SQL string for them
+    // check inputs and filters are valid if they exist and create a SQL string for them
+    query::check_input(&payload.job_name)?;
+    query::check_input(&payload.query)?;
     if !payload.filters.is_empty() {
         for (key, value) in &payload.filters {
             // validate key and value
@@ -131,35 +132,26 @@ pub async fn search(
     let embedding_request = prepare_generic_embedding_request(&vectorizejob.model, &[input]);
     let embeddings = provider.generate_embedding(&embedding_request).await?;
 
-    // Cap window size to prevent excessive inner result sets
-    const MAX_WINDOW_SIZE: i32 = 500;
-    let effective_window_size = payload.window_size.clamp(1, MAX_WINDOW_SIZE);
-
-    // Convert filters to HashMap for the core query builder, and reuse the same
-    // instance for binding to keep iteration order consistent within this call.
-    let filters_hm: HashMap<String, query::FilterValue> =
-        payload.filters.clone().into_iter().collect();
-
     let q = query::hybrid_search_query(
         &payload.job_name,
         &vectorizejob.src_schema,
         &vectorizejob.src_table,
         &vectorizejob.primary_key,
         &["*".to_string()],
-        effective_window_size,
+        payload.window_size,
         payload.limit,
         payload.rrf_k,
         payload.semantic_wt,
         payload.fts_wt,
-        &filters_hm,
+        &payload.filters,
     );
 
     let mut prepared_query = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
         .bind(&payload.query);
 
-    // Bind filter values using the same HashMap instance used by the query builder
-    for value in filters_hm.values() {
+    // Bind filter values using the same BTreeMap instance used by the query builder
+    for value in payload.filters.values() {
         prepared_query = value.bind_to_query(prepared_query);
     }
 
