@@ -48,4 +48,4 @@ INSERT INTO my_products(product_id, product_name, description, product_category,
 (38, 'Jigsaw Puzzle', 'Picture printed on cardboard or wood and cut into pieces to be reassembled', 'toys', 12.99, NOW()),
 (39, 'Hammock', 'Sling made of fabric or netting, suspended between two points for relaxation', 'outdoor', 40.00, NOW()),
 (40, 'Luggage Tag', 'Accessory attached to luggage for identification purposes', 'travel', 7.50, NOW())
-;
+ON CONFLICT (product_id) DO NOTHING;
