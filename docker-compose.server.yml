@@ -18,7 +18,7 @@ services:
     environment:
       <<: *default-env
       POSTGRES_PASSWORD: postgres
-    image: pgvector/pgvector:0.8.0-pg17
+    image: pgvector/pgvector:0.8.1-pg18
     ports:
       - 5432:5432
   server:
@@ -31,7 +31,6 @@ services:
       context: ./
     ports:
       - 8080:8080 # http server
-      - 5433:5433 # proxy
     environment:
         <<: *default-env
         RUST_LOG: debug

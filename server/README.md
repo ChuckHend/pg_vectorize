@@ -2,6 +2,11 @@
 
 An HTTP server that sits in between your application and Postgres.
 
+## See also
+
+- Top-level project overview: `../README.md`
+- Postgres extension (SQL) docs: `../extension/README.md`
+
 ## Features
 - Quickly sets up semantic and full text search on any Postgres table.
 - Generate embeddings from OpenAI, Hugging Face, and many other embedding model providers.
