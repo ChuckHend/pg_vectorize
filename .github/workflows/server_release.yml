@@ -72,8 +72,6 @@ jobs:
           tags: |
             ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-arm64
             ghcr.io/chuckhend/vectorize-server:latest-arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           provenance: true
           sbom: true
 

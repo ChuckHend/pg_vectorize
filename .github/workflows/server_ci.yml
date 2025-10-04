@@ -137,8 +137,6 @@ jobs:
           push: true
           tags: |
             ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }}-arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
           provenance: true
           sbom: true
 
