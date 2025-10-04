@@ -33,7 +33,9 @@ jobs:
           file: ./server/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-amd64
+          tags: |
+            ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-amd64
+            ghcr.io/chuckhend/vectorize-server:latest-amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
@@ -67,7 +69,9 @@ jobs:
           file: ./server/Dockerfile
           platforms: linux/arm64
           push: true
-          tags: ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-arm64
+          tags: |
+            ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-arm64
+            ghcr.io/chuckhend/vectorize-server:latest-arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
@@ -102,3 +106,13 @@ jobs:
           docker manifest annotate ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }} ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-arm64 --arch arm64 --os linux
           docker manifest annotate ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }} ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}-amd64 --arch amd64 --os linux
           docker manifest push ghcr.io/chuckhend/vectorize-server:${{ steps.tag.outputs.TAG }}
+
+          # Also create/push a "latest" multi-arch manifest pointing at the per-arch latest tags
+          docker manifest create \
+            ghcr.io/chuckhend/vectorize-server:latest \
+            ghcr.io/chuckhend/vectorize-server:latest-arm64 \
+            ghcr.io/chuckhend/vectorize-server:latest-amd64
+
+          docker manifest annotate ghcr.io/chuckhend/vectorize-server:latest ghcr.io/chuckhend/vectorize-server:latest-arm64 --arch arm64 --os linux
+          docker manifest annotate ghcr.io/chuckhend/vectorize-server:latest ghcr.io/chuckhend/vectorize-server:latest-amd64 --arch amd64 --os linux
+          docker manifest push ghcr.io/chuckhend/vectorize-server:latest
