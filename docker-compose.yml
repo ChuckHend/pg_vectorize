@@ -21,20 +21,22 @@ services:
     image: pgvector/pgvector:0.8.1-pg18
     ports:
       - 5432:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
   server:
     restart: always
     logging: *default-logging
     depends_on:
       - postgres
-    build:
-      dockerfile: server/Dockerfile
-      context: ./
+    image: ghcr.io/chuckhend/vectorize-server:latest
     ports:
       - 8080:8080 # http server
     environment:
         <<: *default-env
         RUST_LOG: debug
-        VECTORIZE_PROXY_ENABLED: ${VECTORIZE_PROXY_ENABLED:-1}
     command: vectorize-server
   vector-serve:
     restart: always

@@ -145,6 +145,9 @@ pub async fn search(
         &payload.filters,
     );
 
+    log::debug!("query: {:?}", &payload.query);
+    log::debug!("Executing hybrid search query: {}", q);
+
     let mut prepared_query = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
         .bind(&payload.query);

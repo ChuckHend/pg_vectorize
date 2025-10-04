@@ -577,7 +577,7 @@ pub fn hybrid_search_query(
     }
 
     format!(
-        "
+    "
     SELECT to_jsonb(t) as results 
     FROM (
         SELECT {cols}, t.rrf_score, t.semantic_rank, t.fts_rank, t.similarity_score
@@ -618,7 +618,13 @@ pub fn hybrid_search_query(
                     {join_key},
                     ROW_NUMBER() OVER (ORDER BY ts_rank_cd(search_tokens, query) DESC) as fts_rank,
                     COUNT(*) OVER () as max_fts_rank
-                FROM vectorize._search_tokens_{job_name}, plainto_tsquery('english', $2) as query
+                FROM vectorize._search_tokens_{job_name}, 
+                     to_tsquery('english', 
+                         CASE 
+                             WHEN trim($2) = '' THEN ''
+                             ELSE replace(plainto_tsquery('english', $2)::text, ' & ', ' | ')
+                         END
+                     ) as query
                 WHERE search_tokens @@ query
                 ORDER BY ts_rank_cd(search_tokens, query) DESC 
                 LIMIT {window_size}
@@ -629,7 +635,7 @@ pub fn hybrid_search_query(
         ORDER BY t.rrf_score DESC
         LIMIT {limit}
     ) t"
-    )
+)
 }
 #[cfg(test)]
 mod tests {
