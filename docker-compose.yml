@@ -1,27 +1,44 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: 50
+
+x-env: &default-env
+  OPENAI_API_KEY: ${OPENAI_API_KEY}
+  CO_API_KEY: ${CO_API_KEY}
+  VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+  DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/postgres}
+  EMBEDDING_SVC_URL: ${EMBEDDING_SVC_URL:-http://vector-serve:3000/v1}
+
 services:
   postgres:
     restart: always
-    image: ghcr.io/chuckhend/vectorize-pg:latest
+    logging: *default-logging
+    environment:
+      <<: *default-env
+      POSTGRES_PASSWORD: postgres
+    image: pgvector/pgvector:0.8.1-pg18
     ports:
       - 5432:5432
+  server:
+    restart: always
+    logging: *default-logging
+    depends_on:
+      - postgres
+    build:
+      dockerfile: server/Dockerfile
+      context: ./
+    ports:
+      - 8080:8080 # http server
     environment:
-      - POSTGRES_PASSWORD=postgres
+        <<: *default-env
+        RUST_LOG: debug
+        VECTORIZE_PROXY_ENABLED: ${VECTORIZE_PROXY_ENABLED:-1}
+    command: vectorize-server
   vector-serve:
     restart: always
+    logging: *default-logging
     image: ghcr.io/chuckhend/vector-serve:latest
     ports:
       - 3000:3000
-  ollama-serve:
-    image: quay.io/tembo/ollama-serve:latest
-    ports:
-      - 3001:3001
-    environment:
-      - OLLAMA_HOST=0.0.0.0:3001
-    # deploy:
-    #   replicas: 1
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
