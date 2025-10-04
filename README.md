@@ -1,16 +1,14 @@
 <h1 align="center">
- <b>pg_vectorize: a VectorDB for Postgres</b>
+ <b>pg_vectorize: a VectorDB on Postgres</b>
 </h1>
 
-A Postgres server extension that automates the transformation and orchestration of text to embeddings and provides hooks into the most popular LLMs. This allows you to do get up and running and automate maintenance for vector search, full text search, and hybrid search very quickly, which enables you to quickly build RAG and search engines on Postgres.
+A Postgres server and extension that automates the transformation and orchestration of text to embeddings and provides hooks into the most popular LLMs. This allows you to do get up and running and automate maintenance for vector search, full text search, and hybrid search, which enables you to quickly build RAG and search engines on Postgres.
 
 This project relies heavily on the work by [pgvector](https://github.com/pgvector/pgvector) for vector similarity search, [pgmq](https://github.com/pgmq/pgmq) for orchestration in background workers, and [SentenceTransformers](https://huggingface.co/sentence-transformers).
 
 ---
 
-[![PGXN version](https://badge.fury.io/pg/vectorize.svg)](https://pgxn.org/dist/vectorize/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-13%20%7C%2014%20%7C%2015%20%7C%2016%20%7C%2017%20%7C%2018-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-
 
 **API Documentation**: https://chuckhend.github.io/pg_vectorize/
 
@@ -18,7 +16,7 @@ This project relies heavily on the work by [pgvector](https://github.com/pgvecto
 
 ## Overview
 
-pg_vectorize provides two ways to add semantic, full text, and hybrid to any Postgres making it easy to build retrieval-augmented generation (RAG) on Postgres. This top-level README focuses on the HTTP/server usage (the mode most suitable for managed Postgres instances), while still pointing to the Postgres extension docs for users who prefer an in-database SQL experience.
+pg_vectorize provides two ways to add semantic, full text, and hybrid search to any Postgres making it easy to build retrieval-augmented generation (RAG) on Postgres. This project provides an external server only implementation and SQL experience via a Postgres extension.
 
 Modes at a glance:
 
