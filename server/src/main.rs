@@ -52,12 +52,12 @@ async fn main() {
         warn!("Failed to setup job change notifications: {e}");
     }
 
-    // Start the PostgreSQL proxy
-    let proxy_pool = pool.clone();
-    let proxy_cfg = cfg.clone();
-    let proxy_jobmap = Arc::clone(&jobmap);
-    let proxy_cache_pool = cache_pool.clone();
+    // Start the PostgreSQL proxy if enabled
     if cfg.proxy_enabled {
+        let proxy_pool = pool.clone();
+        let proxy_cfg = cfg.clone();
+        let proxy_jobmap = Arc::clone(&jobmap);
+        let proxy_cache_pool = cache_pool.clone();
         tokio::spawn(async move {
             if let Err(e) =
                 start_postgres_proxy(proxy_cfg, proxy_pool, proxy_jobmap, proxy_cache_pool).await
