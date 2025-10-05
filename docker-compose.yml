@@ -39,7 +39,7 @@ services:
     restart: always
     logging: *default-logging
     image: ghcr.io/chuckhend/vector-serve:latest
-    env:
+    environment:
       HF_API_KEY: ${HF_API_KEY}
     ports:
       - 3000:3000
