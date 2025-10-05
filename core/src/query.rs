@@ -327,13 +327,16 @@ BEGIN
         1000 -- default batch size
     );
     FOR batch_result IN SELECT batch FROM vectorize.batch_texts(record_ids, batch_size) LOOP
-        job_messages := array_append(
-            job_messages,
-            jsonb_build_object(
-                'job_name', job_name,
-                'record_ids', batch_result.batch
-            )
-        );
+        -- only append non-null, non-empty batches
+        IF array_length(batch_result.batch, 1) > 0 THEN
+            job_messages := array_append(
+                job_messages,
+                jsonb_build_object(
+                    'job_name', job_name,
+                    'record_ids', batch_result.batch
+                )
+            );
+        END IF;
     END LOOP;
 
     PERFORM pgmq.send_batch(

@@ -138,7 +138,19 @@ fn default_schedule() -> String {
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct JobMessage {
     pub job_name: String,
+    #[serde(deserialize_with = "null_to_vec")]
     pub record_ids: Vec<String>,
+}
+
+// serde helper to convert JSON null into empty Vec<String>
+use serde::de::Deserializer as SerdeDeserializer;
+
+pub fn null_to_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: SerdeDeserializer<'de>,
+{
+    let opt = Option::<Vec<String>>::deserialize(deserializer)?;
+    Ok(opt.unwrap_or_default())
 }
 
 // schema for every job
