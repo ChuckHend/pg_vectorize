@@ -50,18 +50,17 @@ jobs:
       - name: Install project dependencies
         run: |
           make setup
-          cargo install pg-trunk
       - name: Test previous version (v0.20.0)
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CO_API_KEY: ${{ secrets.CO_API_KEY }}
         run: |
-          trunk install vectorize --version 0.20.0 --pg-config $(cargo pgrx info pg-config pg17)
           git fetch --tags
           git checkout tags/v0.20.0
           # pgrx=0.12.5 required for v0.20.0
           cargo install cargo-pgrx --version 0.12.5 --locked
+          cargo pgrx install --pg-config $(cargo pgrx info pg-config pg17)
           # use integration tests for v0.20.0
           make test-integration
       - name: Test branch's version
