@@ -1,6 +1,5 @@
 use actix_cors::Cors;
 use actix_web::{App, HttpServer, middleware, web};
-use log::{error, info, warn};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::net::ToSocketAddrs;
@@ -8,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
+use tracing::{error, info, warn};
 use url::Url;
 
 use vectorize_core::config::Config;
@@ -21,7 +21,8 @@ use vectorize_worker::{WorkerHealthMonitor, start_vectorize_worker_with_monitori
 
 #[actix_web::main]
 async fn main() {
-    env_logger::init();
+    // Initialize tracing subscriber (simple default formatter)
+    tracing_subscriber::fmt().with_target(false).init();
 
     let cfg = Config::from_env();
     let pool = sqlx::postgres::PgPoolOptions::new()
@@ -43,10 +44,10 @@ async fn main() {
         .expect("Failed to initialize project");
 
     // Load initial job cache and setup job change notifications
-    let jobmap = load_initial_job_cache(&pool)
+    let jobcache = load_initial_job_cache(&pool)
         .await
         .expect("Failed to load initial job cache");
-    let jobmap = Arc::new(RwLock::new(jobmap));
+    let jobcache = Arc::new(RwLock::new(jobcache));
 
     if let Err(e) = setup_job_change_notifications(&pool).await {
         warn!("Failed to setup job change notifications: {e}");
@@ -56,11 +57,11 @@ async fn main() {
     if cfg.proxy_enabled {
         let proxy_pool = pool.clone();
         let proxy_cfg = cfg.clone();
-        let proxy_jobmap = Arc::clone(&jobmap);
+        let proxy_jobcache = Arc::clone(&jobcache);
         let proxy_cache_pool = cache_pool.clone();
         tokio::spawn(async move {
             if let Err(e) =
-                start_postgres_proxy(proxy_cfg, proxy_pool, proxy_jobmap, proxy_cache_pool).await
+                start_postgres_proxy(proxy_cfg, proxy_pool, proxy_jobcache, proxy_cache_pool).await
             {
                 error!("Failed to start PostgreSQL proxy: {e}");
             }
@@ -91,7 +92,7 @@ async fn main() {
             .app_data(web::Data::new(cfg.clone()))
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(worker_health_for_routes.clone()))
-            .app_data(web::Data::new(jobmap.clone()))
+            .app_data(web::Data::new(jobcache.clone()))
             .configure(vectorize_server::server::route_config)
             .configure(vectorize_server::routes::health::configure_health_routes)
     })

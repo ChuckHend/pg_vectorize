@@ -81,7 +81,7 @@ impl ResponseError for ServerError {
             ServerError::InvalidRequest(_) => StatusCode::BAD_REQUEST,
             ServerError::NotFoundError(_) => StatusCode::NOT_FOUND,
             _ => {
-                log::error!("Internal Server Error: {self:?}");
+                tracing::error!("Internal Server Error: {self:?}");
                 StatusCode::INTERNAL_SERVER_ERROR
             }
         }

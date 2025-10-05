@@ -151,7 +151,7 @@ pub mod common {
             .output()
             .unwrap();
         if !output.status.success() {
-            log::error!(
+            tracing::error!(
                 "failed to execute SQL: {}",
                 String::from_utf8_lossy(&output.stderr)
             );

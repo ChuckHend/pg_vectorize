@@ -5,7 +5,7 @@ pub mod ops;
 pub use health::*;
 
 use crate::executor::poll_job;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use sqlx::PgPool;
 use std::time::Duration;
 use vectorize_core::config::Config;
@@ -75,7 +75,7 @@ async fn start_vectorize_worker_inner(
                 health_monitor.job_processed().await;
             }
             Ok(None) => {
-                info!(
+                debug!(
                     "No messages in queue, waiting for {} seconds",
                     cfg.poll_interval
                 );

@@ -104,7 +104,7 @@ pub async fn search(
         } {
             job_info
         } else {
-            log::warn!(
+            tracing::warn!(
                 "Job not found in cache, querying database for job: {}",
                 payload.job_name
             );

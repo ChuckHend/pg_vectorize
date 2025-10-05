@@ -1,11 +1,13 @@
+use tracing::{debug, error, info};
 use vectorize_core::config::Config;
 use vectorize_core::init;
 use vectorize_worker::executor::poll_job;
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
-    log::info!("starting pg-vectorize remote-worker");
+    tracing_subscriber::fmt().with_target(false).init();
+
+    info!("starting pg-vectorize worker");
 
     let cfg = Config::from_env();
 
@@ -24,12 +26,12 @@ async fn main() {
     loop {
         match poll_job(&pool, &queue, &cfg).await {
             Ok(Some(_)) => {
-                log::info!("processed job!");
+                info!("processed job!");
                 // continue processing
             }
             Ok(None) => {
                 // no messages, small wait
-                log::debug!(
+                debug!(
                     "No messages in queue, waiting for {} seconds",
                     cfg.poll_interval
                 );
@@ -37,7 +39,7 @@ async fn main() {
             }
             Err(e) => {
                 // error, long wait
-                log::error!("Error processing job: {e:?}");
+                error!("Error processing job: {e:?}");
                 tokio::time::sleep(tokio::time::Duration::from_secs(cfg.poll_interval)).await;
             }
         }

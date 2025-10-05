@@ -2,13 +2,14 @@
  <b>pg_vectorize: a VectorDB on Postgres</b>
 </h1>
 
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-13%20%7C%2014%20%7C%2015%20%7C%2016%20%7C%2017%20%7C%2018-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+
 A Postgres server and extension that automates the transformation and orchestration of text to embeddings and provides hooks into the most popular LLMs. This allows you to do get up and running and automate maintenance for vector search, full text search, and hybrid search, which enables you to quickly build RAG and search engines on Postgres.
 
 This project relies heavily on the work by [pgvector](https://github.com/pgvector/pgvector) for vector similarity search, [pgmq](https://github.com/pgmq/pgmq) for orchestration in background workers, and [SentenceTransformers](https://huggingface.co/sentence-transformers).
 
 ---
 
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-13%20%7C%2014%20%7C%2015%20%7C%2016%20%7C%2017%20%7C%2018-336791?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
 **API Documentation**: https://chuckhend.github.io/pg_vectorize/
 
@@ -64,7 +65,12 @@ curl -X POST http://localhost:8080/api/v1/table -d '{
 Search using the HTTP API:
 
 ```bash
-curl -X GET "http://localhost:8080/api/v1/search?job_name=my_job&query=camping%20backpack&limit=1" | jq .
+curl -G \
+  "http://localhost:8080/api/v1/search" \
+  --data-urlencode "job_name=my_job" \
+  --data-urlencode "query=camping backpack" \
+  --data-urlencode "limit=1" \
+  | jq .
 ```
 
 ```json
@@ -79,7 +85,7 @@ curl -X GET "http://localhost:8080/api/v1/search?job_name=my_job&query=camping%2
     "rrf_score": 0.03278688524590164,
     "semantic_rank": 1,
     "similarity_score": 0.6296013593673706,
-    "updated_at": "2025-10-04T14:45:16.152526+00:00"
+    "updated_at": "2025-10-05T00:14:39.220893+00:00"
   }
 ]
 ```
