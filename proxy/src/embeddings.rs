@@ -130,21 +130,20 @@ pub fn resolve_prepared_embed_calls(
     parameters: &[String],
 ) -> Result<Vec<EmbedCall>, VectorizeError> {
     for call in &mut embed_calls {
-        if call.is_prepared {
-            if let (Some(query_idx), Some(project_idx)) =
+        if call.is_prepared
+            && let (Some(query_idx), Some(project_idx)) =
                 (call.query_param_index, call.project_param_index)
-            {
-                if query_idx >= parameters.len() || project_idx >= parameters.len() {
-                    return Err(VectorizeError::EmbeddingGenerationFailed(format!(
-                        "Parameter index out of bounds: query_idx={}, project_idx={}, params_len={}",
-                        query_idx,
-                        project_idx,
-                        parameters.len()
-                    )));
-                }
-                call.query = parameters[query_idx].clone();
-                call.project_name = parameters[project_idx].clone();
+        {
+            if query_idx >= parameters.len() || project_idx >= parameters.len() {
+                return Err(VectorizeError::EmbeddingGenerationFailed(format!(
+                    "Parameter index out of bounds: query_idx={}, project_idx={}, params_len={}",
+                    query_idx,
+                    project_idx,
+                    parameters.len()
+                )));
             }
+            call.query = parameters[query_idx].clone();
+            call.project_name = parameters[project_idx].clone();
         }
     }
     Ok(embed_calls)

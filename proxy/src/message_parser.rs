@@ -133,25 +133,24 @@ pub async fn process_simple_query_message(
     if let Some(null_pos) = query_bytes.iter().position(|&b| b == 0) {
         let sql = String::from_utf8_lossy(&query_bytes[..null_pos]).to_string();
 
-        if let Ok(embed_calls) = parse_embed_calls(&sql) {
-            if !embed_calls.is_empty() {
-                let jobmap_read = config.jobmap.read().await;
-                let embedding_provider =
-                    JobMapEmbeddingProvider::new(Arc::new(jobmap_read.clone()));
-                drop(jobmap_read);
+        if let Ok(embed_calls) = parse_embed_calls(&sql)
+            && !embed_calls.is_empty()
+        {
+            let jobmap_read = config.jobmap.read().await;
+            let embedding_provider = JobMapEmbeddingProvider::new(Arc::new(jobmap_read.clone()));
+            drop(jobmap_read);
 
-                if let Ok(rewritten_sql_string) =
-                    rewrite_query_with_embeddings(&sql, &embedding_provider).await
-                {
-                    let rewritten_message = create_query_message(&rewritten_sql_string);
-                    let parsed = ParsedMessage {
-                        message_type: QUERY_MESSAGE,
-                        sql: Some(rewritten_sql_string),
-                        has_embed_calls: true,
-                        rewritten: true,
-                    };
-                    return Some((rewritten_message, parsed));
-                }
+            if let Ok(rewritten_sql_string) =
+                rewrite_query_with_embeddings(&sql, &embedding_provider).await
+            {
+                let rewritten_message = create_query_message(&rewritten_sql_string);
+                let parsed = ParsedMessage {
+                    message_type: QUERY_MESSAGE,
+                    sql: Some(rewritten_sql_string),
+                    has_embed_calls: true,
+                    rewritten: true,
+                };
+                return Some((rewritten_message, parsed));
             }
         }
 
@@ -191,61 +190,61 @@ pub async fn process_parse_message(
         if offset > query_start {
             let sql = String::from_utf8_lossy(&data[query_start..offset]).to_string();
 
-            if let Ok(embed_calls) = parse_embed_calls(&sql) {
-                if !embed_calls.is_empty() {
-                    // extract statement name from the beginning of the parse message
-                    let statement_name =
-                        if let Some(null_pos) = data[5..].iter().position(|&b| b == 0) {
-                            String::from_utf8_lossy(&data[5..5 + null_pos]).to_string()
-                        } else {
-                            String::new()
-                        };
+            if let Ok(embed_calls) = parse_embed_calls(&sql)
+                && !embed_calls.is_empty()
+            {
+                // extract statement name from the beginning of the parse message
+                let statement_name = if let Some(null_pos) = data[5..].iter().position(|&b| b == 0)
+                {
+                    String::from_utf8_lossy(&data[5..5 + null_pos]).to_string()
+                } else {
+                    String::new()
+                };
 
-                    // check prepared statement with parameters
-                    let has_prepared_calls = embed_calls.iter().any(|call| call.is_prepared);
+                // check prepared statement with parameters
+                let has_prepared_calls = embed_calls.iter().any(|call| call.is_prepared);
 
-                    if has_prepared_calls {
-                        // store the prepared statement for later use during bind
-                        let prepared_statement = PreparedStatement {
-                            statement_name: statement_name.clone(),
-                            sql: sql.clone(),
-                            embed_calls: embed_calls.clone(),
-                        };
+                if has_prepared_calls {
+                    // store the prepared statement for later use during bind
+                    let prepared_statement = PreparedStatement {
+                        statement_name: statement_name.clone(),
+                        sql: sql.clone(),
+                        embed_calls: embed_calls.clone(),
+                    };
 
-                        let mut prepared_statements = config.prepared_statements.write().await;
-                        prepared_statements.insert(statement_name, prepared_statement);
+                    let mut prepared_statements = config.prepared_statements.write().await;
+                    prepared_statements.insert(statement_name, prepared_statement);
 
+                    let parsed = ParsedMessage {
+                        message_type: PARSE_MESSAGE,
+                        sql: Some(sql),
+                        has_embed_calls: true,
+                        rewritten: false,
+                    };
+                    return Some((data.to_vec(), parsed));
+                } else {
+                    // handle regular string literal embed() calls
+                    let jobmap_read = config.jobmap.read().await;
+                    let embedding_provider =
+                        JobMapEmbeddingProvider::new(Arc::new(jobmap_read.clone()));
+                    drop(jobmap_read);
+
+                    if let Ok(rewritten_sql_string) =
+                        rewrite_query_with_embeddings(&sql, &embedding_provider).await
+                    {
+                        let rewritten_message = create_parse_message_with_rewritten_query(
+                            data,
+                            query_start,
+                            offset,
+                            &rewritten_sql_string,
+                        );
                         let parsed = ParsedMessage {
                             message_type: PARSE_MESSAGE,
-                            sql: Some(sql),
+                            sql: Some(rewritten_sql_string),
                             has_embed_calls: true,
-                            rewritten: false,
+                            rewritten: true,
                         };
-                        return Some((data.to_vec(), parsed));
-                    } else {
-                        // handle regular string literal embed() calls
-                        let jobmap_read = config.jobmap.read().await;
-                        let embedding_provider =
-                            JobMapEmbeddingProvider::new(Arc::new(jobmap_read.clone()));
-                        drop(jobmap_read);
-
-                        if let Ok(rewritten_sql_string) =
-                            rewrite_query_with_embeddings(&sql, &embedding_provider).await
-                        {
-                            let rewritten_message = create_parse_message_with_rewritten_query(
-                                data,
-                                query_start,
-                                offset,
-                                &rewritten_sql_string,
-                            );
-                            let parsed = ParsedMessage {
-                                message_type: PARSE_MESSAGE,
-                                sql: Some(rewritten_sql_string),
-                                has_embed_calls: true,
-                                rewritten: true,
-                            };
-                            return Some((rewritten_message, parsed));
-                        }
+                        return Some((rewritten_message, parsed));
                     }
                 }
             }
@@ -302,40 +301,38 @@ pub async fn process_bind_message(
 
     // check if we have a prepared statement with embed calls
     let prepared_statements = config.prepared_statements.read().await;
-    if let Some(prepared_statement) = prepared_statements.get(&statement_name) {
-        if !prepared_statement.embed_calls.is_empty()
-            && prepared_statement
-                .embed_calls
-                .iter()
-                .any(|call| call.is_prepared)
-        {
-            // parse parameters from the bind message
-            if let Some(parameters) = parse_bind_parameters(&data[offset..]) {
-                // Resolve prepared statement parameters
-                if let Ok(_resolved_calls) = resolve_prepared_embed_calls(
-                    prepared_statement.embed_calls.clone(),
-                    &parameters,
-                ) {
-                    // generate embeddings for the resolved calls
-                    let jobmap_read = config.jobmap.read().await;
-                    let embedding_provider =
-                        JobMapEmbeddingProvider::new(Arc::new(jobmap_read.clone()));
-                    drop(jobmap_read);
+    if let Some(prepared_statement) = prepared_statements.get(&statement_name)
+        && !prepared_statement.embed_calls.is_empty()
+        && prepared_statement
+            .embed_calls
+            .iter()
+            .any(|call| call.is_prepared)
+    {
+        // parse parameters from the bind message
+        if let Some(parameters) = parse_bind_parameters(&data[offset..]) {
+            // Resolve prepared statement parameters
+            if let Ok(_resolved_calls) =
+                resolve_prepared_embed_calls(prepared_statement.embed_calls.clone(), &parameters)
+            {
+                // generate embeddings for the resolved calls
+                let jobmap_read = config.jobmap.read().await;
+                let embedding_provider =
+                    JobMapEmbeddingProvider::new(Arc::new(jobmap_read.clone()));
+                drop(jobmap_read);
 
-                    if let Ok(rewritten_sql) =
-                        rewrite_query_with_embeddings(&prepared_statement.sql, &embedding_provider)
-                            .await
-                    {
-                        // create a new query message with the rewritten SQL
-                        let rewritten_message = create_query_message(&rewritten_sql);
-                        let parsed = ParsedMessage {
-                            message_type: QUERY_MESSAGE, // convert to simple query
-                            sql: Some(rewritten_sql),
-                            has_embed_calls: true,
-                            rewritten: true,
-                        };
-                        return Some((rewritten_message, parsed));
-                    }
+                if let Ok(rewritten_sql) =
+                    rewrite_query_with_embeddings(&prepared_statement.sql, &embedding_provider)
+                        .await
+                {
+                    // create a new query message with the rewritten SQL
+                    let rewritten_message = create_query_message(&rewritten_sql);
+                    let parsed = ParsedMessage {
+                        message_type: QUERY_MESSAGE, // convert to simple query
+                        sql: Some(rewritten_sql),
+                        has_embed_calls: true,
+                        rewritten: true,
+                    };
+                    return Some((rewritten_message, parsed));
                 }
             }
         }

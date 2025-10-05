@@ -30,10 +30,35 @@ pub struct Config {
     pub max_retries: i32,
     pub webserver_port: u16,
     pub num_server_workers: usize,
+    pub database_pool_max: u32,
+    pub database_cache_pool_max: u32,
 }
 
 impl Config {
     pub fn from_env() -> Config {
+        // read server worker count first so we can derive sensible defaults
+        let num_server_workers: usize =
+            from_env_default("NUM_SERVER_WORKERS", "8").parse().unwrap();
+
+        // derive a default DB pool size from num_server_workers: 2 connections per worker + 2 extra,
+        // clamped between 4 and 64. This gives headroom for background tasks and short bursts.
+        let derived_db_pool_default: u32 = ((num_server_workers as u32).saturating_mul(2))
+            .saturating_add(2)
+            .clamp(4, 64);
+
+        // allow environment override; fall back to derived default when not set or invalid.
+        let database_pool_max: u32 = env::var("DATABASE_POOL_MAX")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(derived_db_pool_default);
+
+        // cache pool is typically small; default to max(2, num_server_workers / 4)
+        let derived_cache_pool_default: u32 = ((num_server_workers as u32) / 4).max(2).clamp(2, 16);
+        let database_cache_pool_max: u32 = env::var("DATABASE_CACHE_POOL_MAX")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(derived_cache_pool_default);
+
         Config {
             proxy_enabled: env::var("VECTORIZE_PROXY_ENABLED")
                 .map(|v| parse_bool_flexible(&v))
@@ -63,7 +88,9 @@ impl Config {
                 .unwrap(),
             max_retries: from_env_default("MAX_RETRIES", "2").parse().unwrap(),
             webserver_port: from_env_default("WEBSERVER_PORT", "8080").parse().unwrap(),
-            num_server_workers: from_env_default("NUM_SERVER_WORKERS", "8").parse().unwrap(),
+            num_server_workers,
+            database_pool_max,
+            database_cache_pool_max,
         }
     }
 }

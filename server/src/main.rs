@@ -25,14 +25,14 @@ async fn main() {
 
     let cfg = Config::from_env();
     let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(cfg.database_pool_max)
         .connect(&cfg.database_url)
         .await
         .expect("unable to connect to postgres");
 
     // Create a separate connection pool for cache refresher
     let cache_pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(2)
+        .max_connections(cfg.database_cache_pool_max)
         .connect(&cfg.database_url)
         .await
         .expect("unable to connect to postgres for cache refresher");
