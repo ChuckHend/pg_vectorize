@@ -28,7 +28,6 @@ services:
     ports:
       - 8080:8080
     environment:
-      HF_API_KEY: ${HF_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       CO_API_KEY: ${CO_API_KEY}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
@@ -40,5 +39,7 @@ services:
     restart: always
     logging: *default-logging
     image: ghcr.io/chuckhend/vector-serve:latest
+    env:
+      HF_API_KEY: ${HF_API_KEY}
     ports:
       - 3000:3000
