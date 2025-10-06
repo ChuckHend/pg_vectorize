@@ -1,11 +1,7 @@
 use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::net::ToSocketAddrs;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::RwLock;
 use tracing::{error, info};
-use url::Url;
 use vectorize_core::config::Config;
 use vectorize_core::types::VectorizeJob;
 use vectorize_worker::WorkerHealth;
@@ -18,28 +14,6 @@ pub enum AppStateError {
     Database(#[from] sqlx::Error),
     #[error("Connection timeout")]
     Timeout,
-}
-
-#[derive(Clone)]
-pub struct CacheSyncConfig {
-    pub postgres_addr: std::net::SocketAddr,
-    pub timeout: Duration,
-    pub jobmap: Arc<RwLock<HashMap<String, VectorizeJob>>>,
-    pub db_pool: sqlx::PgPool,
-    pub prepared_statements: Arc<RwLock<HashMap<String, PreparedStatement>>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct PreparedStatement {
-    pub statement_name: String,
-    pub sql: String,
-    pub embed_calls: Vec<EmbedCall>,
-}
-
-#[derive(Debug, Clone)]
-pub struct EmbedCall {
-    pub column_name: String,
-    pub model_name: String,
 }
 
 #[derive(Clone)]
@@ -78,7 +52,7 @@ impl AppState {
         if let Err(e) = setup_job_change_notifications(&db_pool).await {
             tracing::warn!("Failed to setup job change notifications: {e}");
         }
-        Self::start_cache_sync_listener_task(&config, &cache_pool, &job_cache).await;
+        Self::start_cache_sync_listener_task(&cache_pool, &job_cache).await;
 
         let worker_health = Arc::new(RwLock::new(WorkerHealth {
             status: vectorize_worker::WorkerStatus::Starting,
@@ -99,72 +73,23 @@ impl AppState {
     }
 
     async fn start_cache_sync_listener_task(
-        config: &Config,
         cache_pool: &sqlx::PgPool,
         job_cache: &Arc<RwLock<HashMap<String, VectorizeJob>>>,
     ) {
         let cache_pool_for_sync = cache_pool.clone();
         let jobmap_for_sync = job_cache.clone();
-        let database_url = config.database_url.clone();
 
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
-            let url = match Url::parse(&database_url) {
-                Ok(url) => url,
-                Err(e) => {
-                    error!("Failed to parse database URL: {e}");
-                    return;
-                }
-            };
-
-            let postgres_host = match url.host_str() {
-                Some(host) => host,
-                None => {
-                    error!("No host in database URL");
-                    return;
-                }
-            };
-
-            let postgres_port = match url.port() {
-                Some(port) => port,
-                None => {
-                    error!("No port in database URL");
-                    return;
-                }
-            };
-
-            let postgres_addr: SocketAddr =
-                match format!("{postgres_host}:{postgres_port}").to_socket_addrs() {
-                    Ok(mut addrs) => match addrs.next() {
-                        Some(addr) => addr,
-                        None => {
-                            error!("Failed to resolve PostgreSQL host address");
-                            return;
-                        }
-                    },
-                    Err(e) => {
-                        error!("Failed to resolve PostgreSQL host address: {e}");
-                        return;
-                    }
-                };
-
-            let sync_config = Arc::new(CacheSyncConfig {
-                postgres_addr,
-                timeout: Duration::from_secs(30),
-                jobmap: jobmap_for_sync,
-                db_pool: cache_pool_for_sync,
-                prepared_statements: Arc::new(RwLock::new(HashMap::new())),
-            });
-
-            if let Err(e) = start_cache_sync_listener(sync_config).await {
+            if let Err(e) = start_cache_sync_listener(cache_pool_for_sync, jobmap_for_sync).await {
                 error!("Cache synchronization error: {e}");
             }
         });
     }
 }
 
-// Cache sync functions copied from proxy module
+// Cache sync functions for job change notifications
 pub async fn setup_job_change_notifications(
     pool: &sqlx::PgPool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -216,14 +141,15 @@ pub async fn setup_job_change_notifications(
 }
 
 pub async fn start_cache_sync_listener(
-    config: Arc<CacheSyncConfig>,
+    db_pool: sqlx::PgPool,
+    job_cache: Arc<RwLock<HashMap<String, VectorizeJob>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut retry_delay = Duration::from_secs(1);
-    let max_retry_delay = Duration::from_secs(60);
+    let mut retry_delay = std::time::Duration::from_secs(1);
+    let max_retry_delay = std::time::Duration::from_secs(60);
 
     loop {
-        match try_listen_for_changes(&config).await {
-            Ok(_) => retry_delay = Duration::from_secs(1),
+        match try_listen_for_changes(&db_pool, &job_cache).await {
+            Ok(_) => retry_delay = std::time::Duration::from_secs(1),
             Err(e) => {
                 error!("Cache sync listener error: {e}. Retrying in {retry_delay:?}");
                 tokio::time::sleep(retry_delay).await;
@@ -234,9 +160,10 @@ pub async fn start_cache_sync_listener(
 }
 
 async fn try_listen_for_changes(
-    config: &CacheSyncConfig,
+    db_pool: &sqlx::PgPool,
+    job_cache: &Arc<RwLock<HashMap<String, VectorizeJob>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut listener = sqlx::postgres::PgListener::connect_with(&config.db_pool).await?;
+    let mut listener = sqlx::postgres::PgListener::connect_with(db_pool).await?;
     listener.listen("vectorize_job_changes").await?;
 
     info!("Connected and listening for vectorize job changes");
@@ -261,7 +188,7 @@ async fn try_listen_for_changes(
                     );
                 }
 
-                if let Err(e) = refresh_job_cache(config).await {
+                if let Err(e) = refresh_job_cache(db_pool, job_cache).await {
                     error!("Failed to refresh job cache: {e}");
                 } else {
                     info!("Job cache refreshed successfully");
@@ -276,12 +203,13 @@ async fn try_listen_for_changes(
 }
 
 pub async fn refresh_job_cache(
-    config: &CacheSyncConfig,
+    db_pool: &sqlx::PgPool,
+    job_cache: &Arc<RwLock<HashMap<String, VectorizeJob>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let all_jobs: Vec<VectorizeJob> = sqlx::query_as(
         "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model FROM vectorize.job",
     )
-    .fetch_all(&config.db_pool)
+    .fetch_all(db_pool)
     .await?;
 
     let jobmap: HashMap<String, VectorizeJob> = all_jobs
@@ -293,7 +221,7 @@ pub async fn refresh_job_cache(
         .collect();
 
     {
-        let mut jobmap_write = config.jobmap.write().await;
+        let mut jobmap_write = job_cache.write().await;
         *jobmap_write = jobmap;
         info!("Updated job cache with {} jobs", jobmap_write.len());
     }
