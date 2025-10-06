@@ -17,17 +17,15 @@ use vectorize_worker::{WorkerHealthMonitor, start_vectorize_worker_with_monitori
 
 #[actix_web::main]
 async fn main() {
-    // Initialize tracing subscriber (simple default formatter)
     tracing_subscriber::fmt().with_target(false).init();
 
     let cfg = Config::from_env();
 
-    // Initialize application state with all dependencies
     let app_state = AppState::new(cfg)
         .await
         .expect("Failed to initialize application state");
 
-    // Start the PostgreSQL proxy if enabled
+    // start the PostgreSQL proxy if enabled
     if app_state.config.proxy_enabled {
         let proxy_state = app_state.clone();
         tokio::spawn(async move {
@@ -37,7 +35,7 @@ async fn main() {
         });
     }
 
-    // Start the vectorize worker with health monitoring
+    // start the vectorize worker with health monitoring
     let worker_state = app_state.clone();
     let worker_health_monitor = WorkerHealthMonitor::new();
 
@@ -53,7 +51,7 @@ async fn main() {
         }
     });
 
-    // Store values before moving app_state
+    // store values before moving app_state
     let server_workers = app_state.config.num_server_workers;
     let server_port = app_state.config.webserver_port;
 

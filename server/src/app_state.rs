@@ -4,12 +4,43 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use tracing::error;
+use tracing::{error, info};
 use url::Url;
 use vectorize_core::config::Config;
 use vectorize_core::types::VectorizeJob;
-use vectorize_proxy::{ProxyConfig, start_cache_sync_listener};
 use vectorize_worker::WorkerHealth;
+
+#[derive(Debug, thiserror::Error)]
+pub enum AppStateError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Database error: {0}")]
+    Database(#[from] sqlx::Error),
+    #[error("Connection timeout")]
+    Timeout,
+}
+
+#[derive(Clone)]
+pub struct CacheSyncConfig {
+    pub postgres_addr: std::net::SocketAddr,
+    pub timeout: Duration,
+    pub jobmap: Arc<RwLock<HashMap<String, VectorizeJob>>>,
+    pub db_pool: sqlx::PgPool,
+    pub prepared_statements: Arc<RwLock<HashMap<String, PreparedStatement>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedStatement {
+    pub statement_name: String,
+    pub sql: String,
+    pub embed_calls: Vec<EmbedCall>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EmbedCall {
+    pub column_name: String,
+    pub model_name: String,
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -39,19 +70,16 @@ impl AppState {
             .map_err(|e| format!("Failed to initialize project: {e}"))?;
 
         // load initial job cache
-        let job_cache = vectorize_proxy::load_initial_job_cache(&db_pool)
+        let job_cache = load_initial_job_cache(&db_pool)
             .await
             .map_err(|e| format!("Failed to load initial job cache: {e}"))?;
         let job_cache = Arc::new(RwLock::new(job_cache));
 
-        // setup job change notifications
-        if let Err(e) = vectorize_proxy::setup_job_change_notifications(&db_pool).await {
+        if let Err(e) = setup_job_change_notifications(&db_pool).await {
             tracing::warn!("Failed to setup job change notifications: {e}");
         }
-        // start cache sync listener for job changes
-        Self::start_cache_sync_listener(&config, &cache_pool, &job_cache).await;
+        Self::start_cache_sync_listener_task(&config, &cache_pool, &job_cache).await;
 
-        // Initialize worker health monitoring
         let worker_health = Arc::new(RwLock::new(WorkerHealth {
             status: vectorize_worker::WorkerStatus::Starting,
             last_heartbeat: std::time::SystemTime::now(),
@@ -70,8 +98,7 @@ impl AppState {
         })
     }
 
-    /// Start the cache sync listener for job changes
-    async fn start_cache_sync_listener(
+    async fn start_cache_sync_listener_task(
         config: &Config,
         cache_pool: &sqlx::PgPool,
         job_cache: &Arc<RwLock<HashMap<String, VectorizeJob>>>,
@@ -122,7 +149,7 @@ impl AppState {
                     }
                 };
 
-            let sync_config = Arc::new(ProxyConfig {
+            let sync_config = Arc::new(CacheSyncConfig {
                 postgres_addr,
                 timeout: Duration::from_secs(30),
                 jobmap: jobmap_for_sync,
@@ -135,4 +162,162 @@ impl AppState {
             }
         });
     }
+}
+
+// Cache sync functions copied from proxy module
+pub async fn setup_job_change_notifications(
+    pool: &sqlx::PgPool,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut tx = pool.begin().await?;
+
+    let create_notify_function = r#"
+        CREATE OR REPLACE FUNCTION vectorize.notify_job_change()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            IF TG_OP = 'DELETE' THEN
+                PERFORM pg_notify('vectorize_job_changes', 
+                    json_build_object(
+                        'operation', TG_OP,
+                        'job_name', OLD.job_name
+                    )::text
+                );
+                RETURN OLD;
+            ELSE
+                PERFORM pg_notify('vectorize_job_changes', 
+                    json_build_object(
+                        'operation', TG_OP,
+                        'job_name', NEW.job_name
+                    )::text
+                );
+                RETURN NEW;
+            END IF;
+        END;
+        $$ LANGUAGE plpgsql;
+    "#;
+
+    sqlx::query("DROP TRIGGER IF EXISTS job_change_trigger ON vectorize.job;")
+        .execute(&mut *tx)
+        .await?;
+
+    let create_trigger = r#"
+        CREATE TRIGGER job_change_trigger
+            AFTER INSERT OR UPDATE OR DELETE ON vectorize.job
+            FOR EACH ROW EXECUTE FUNCTION vectorize.notify_job_change();
+    "#;
+
+    sqlx::query(create_notify_function)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(create_trigger).execute(&mut *tx).await?;
+
+    tx.commit().await?;
+    info!("Database trigger for job changes setup successfully");
+    Ok(())
+}
+
+pub async fn start_cache_sync_listener(
+    config: Arc<CacheSyncConfig>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut retry_delay = Duration::from_secs(1);
+    let max_retry_delay = Duration::from_secs(60);
+
+    loop {
+        match try_listen_for_changes(&config).await {
+            Ok(_) => retry_delay = Duration::from_secs(1),
+            Err(e) => {
+                error!("Cache sync listener error: {e}. Retrying in {retry_delay:?}");
+                tokio::time::sleep(retry_delay).await;
+                retry_delay = std::cmp::min(retry_delay * 2, max_retry_delay);
+            }
+        }
+    }
+}
+
+async fn try_listen_for_changes(
+    config: &CacheSyncConfig,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut listener = sqlx::postgres::PgListener::connect_with(&config.db_pool).await?;
+    listener.listen("vectorize_job_changes").await?;
+
+    info!("Connected and listening for vectorize job changes");
+
+    loop {
+        match listener.recv().await {
+            Ok(notification) => {
+                info!(
+                    "Received job change notification: {}",
+                    notification.payload()
+                );
+
+                if let Ok(payload) =
+                    serde_json::from_str::<serde_json::Value>(notification.payload())
+                {
+                    let operation = payload.get("operation").and_then(|v| v.as_str());
+                    let job_name = payload.get("job_name").and_then(|v| v.as_str());
+                    info!(
+                        "Job change detected - Operation: {}, Job: {}",
+                        operation.unwrap_or("unknown"),
+                        job_name.unwrap_or("unknown")
+                    );
+                }
+
+                if let Err(e) = refresh_job_cache(config).await {
+                    error!("Failed to refresh job cache: {e}");
+                } else {
+                    info!("Job cache refreshed successfully");
+                }
+            }
+            Err(e) => {
+                error!("Error receiving notification: {e}");
+                return Err(e.into());
+            }
+        }
+    }
+}
+
+pub async fn refresh_job_cache(
+    config: &CacheSyncConfig,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let all_jobs: Vec<VectorizeJob> = sqlx::query_as(
+        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model FROM vectorize.job",
+    )
+    .fetch_all(&config.db_pool)
+    .await?;
+
+    let jobmap: HashMap<String, VectorizeJob> = all_jobs
+        .into_iter()
+        .map(|mut item| {
+            let key = std::mem::take(&mut item.job_name);
+            (key, item)
+        })
+        .collect();
+
+    {
+        let mut jobmap_write = config.jobmap.write().await;
+        *jobmap_write = jobmap;
+        info!("Updated job cache with {} jobs", jobmap_write.len());
+    }
+
+    Ok(())
+}
+
+pub async fn load_initial_job_cache(
+    pool: &sqlx::PgPool,
+) -> Result<HashMap<String, VectorizeJob>, AppStateError> {
+    let all_jobs: Vec<VectorizeJob> = sqlx::query_as(
+        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model FROM vectorize.job",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(AppStateError::Database)?;
+
+    let jobmap: HashMap<String, VectorizeJob> = all_jobs
+        .into_iter()
+        .map(|mut item| {
+            let key = std::mem::take(&mut item.job_name);
+            (key, item)
+        })
+        .collect();
+
+    Ok(jobmap)
 }
