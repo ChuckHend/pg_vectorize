@@ -1,11 +1,10 @@
+use crate::app_state::AppState;
 use crate::errors::ServerError;
 use actix_web::{HttpResponse, get, web};
 use serde::{Deserialize, Serialize};
-use sqlx::{PgPool, Row, prelude::FromRow};
-use std::collections::{BTreeMap, HashMap};
+use sqlx::{Row, prelude::FromRow};
+use std::collections::BTreeMap;
 
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use vectorize_core::query;
@@ -77,8 +76,7 @@ pub struct SearchResponse {
 )]
 #[get("/search")]
 pub async fn search(
-    pool: web::Data<PgPool>,
-    jobmap: web::Data<Arc<RwLock<HashMap<String, VectorizeJob>>>>,
+    app_state: web::Data<AppState>,
     payload: web::Query<SearchRequest>,
 ) -> Result<HttpResponse, ServerError> {
     let payload = payload.into_inner();
@@ -99,7 +97,7 @@ pub async fn search(
     // Try to get job info from cache first, fallback to database with write-through on miss
     let vectorizejob = {
         if let Some(job_info) = {
-            let job_cache = jobmap.read().await;
+            let job_cache = app_state.job_cache.read().await;
             job_cache.get(&payload.job_name).cloned()
         } {
             job_info
@@ -108,8 +106,8 @@ pub async fn search(
                 "Job not found in cache, querying database for job: {}",
                 payload.job_name
             );
-            let job = get_vectorize_job(&pool, &payload.job_name).await?;
-            let mut job_cache = jobmap.write().await;
+            let job = get_vectorize_job(&app_state.db_pool, &payload.job_name).await?;
+            let mut job_cache = app_state.job_cache.write().await;
             job_cache.insert(payload.job_name.clone(), job.clone());
             job
         }
@@ -154,7 +152,7 @@ pub async fn search(
         prepared_query = value.bind_to_query(prepared_query);
     }
 
-    let results = prepared_query.fetch_all(&**pool).await?;
+    let results = prepared_query.fetch_all(&app_state.db_pool).await?;
 
     let json_results: Vec<serde_json::Value> = results
         .iter()
@@ -164,7 +162,10 @@ pub async fn search(
     Ok(HttpResponse::Ok().json(json_results))
 }
 
-async fn get_vectorize_job(pool: &PgPool, job_name: &str) -> Result<VectorizeJob, ServerError> {
+async fn get_vectorize_job(
+    pool: &sqlx::PgPool,
+    job_name: &str,
+) -> Result<VectorizeJob, ServerError> {
     // Changed return type
     match sqlx::query(
         "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model 

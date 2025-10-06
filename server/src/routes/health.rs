@@ -1,15 +1,10 @@
+use crate::app_state::AppState;
 use actix_web::{HttpResponse, Result, web};
 use serde_json::json;
-use std::sync::Arc;
 use std::time::SystemTime;
-use tokio::sync::RwLock;
 
-use vectorize_worker::WorkerHealth;
-
-pub async fn health_check(
-    worker_health: web::Data<Arc<RwLock<WorkerHealth>>>,
-) -> Result<HttpResponse> {
-    let health = worker_health.read().await;
+pub async fn health_check(app_state: web::Data<AppState>) -> Result<HttpResponse> {
+    let health = app_state.worker_health.read().await;
     let is_healthy = match &health.status {
         vectorize_worker::WorkerStatus::Healthy => true,
         vectorize_worker::WorkerStatus::Starting => {
@@ -59,10 +54,8 @@ pub async fn liveness_check() -> Result<HttpResponse> {
     })))
 }
 
-pub async fn readiness_check(
-    worker_health: web::Data<Arc<RwLock<WorkerHealth>>>,
-) -> Result<HttpResponse> {
-    let health = worker_health.read().await;
+pub async fn readiness_check(app_state: web::Data<AppState>) -> Result<HttpResponse> {
+    let health = app_state.worker_health.read().await;
     let is_ready = matches!(health.status, vectorize_worker::WorkerStatus::Healthy);
 
     let response = json!({
