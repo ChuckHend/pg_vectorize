@@ -78,7 +78,10 @@ pub mod common {
             if start_time.elapsed() >= timeout_duration {
                 Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
-                    "Search request timed out after 10 seconds",
+                    format!(
+                        "Search request timed out after {} seconds",
+                        timeout_duration.as_secs()
+                    ),
                 )))?
             }
 
