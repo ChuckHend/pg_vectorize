@@ -117,6 +117,9 @@ impl<'de> serde::Deserialize<'de> for FilterValue {
                             } else if let Ok(float_val) = val.parse::<f64>() {
                                 FilterValueType::Float(float_val)
                             } else {
+                                // Validate string values for SQL injection
+                                validate_filter_value(val)
+                                    .map_err(|e| de::Error::custom(e.to_string()))?;
                                 FilterValueType::String(val.to_string())
                             }
                         }
@@ -152,6 +155,9 @@ impl<'de> serde::Deserialize<'de> for FilterValue {
                     } else if let Ok(float_val) = value.parse::<f64>() {
                         FilterValueType::Float(float_val)
                     } else {
+                        // Validate string values for SQL injection
+                        validate_filter_value(value)
+                            .map_err(|e| de::Error::custom(e.to_string()))?;
                         FilterValueType::String(value.to_string())
                     };
 
@@ -186,6 +192,105 @@ pub fn check_input(input: &str) -> Result<()> {
         true => Ok(()),
         false => Err(anyhow!("Invalid Input: {}", input)),
     }
+}
+
+/// Validates filter values against SQL injection patterns
+/// Returns an error if malicious patterns are detected
+pub fn validate_filter_value(value: &str) -> Result<()> {
+    let value_lower = value.to_lowercase();
+
+    // Check for common SQL injection patterns
+    let malicious_patterns = [
+        // Basic SQL injection patterns
+        "';",
+        "' or",
+        "' union",
+        "' and",
+        "' drop",
+        "' delete",
+        "' insert",
+        "' update",
+        "' create",
+        "' alter",
+        "' exec",
+        "' execute",
+        "' script",
+        "javascript:",
+        "<script",
+        "</script",
+        // Comment patterns
+        "--",
+        "/*",
+        "*/",
+        // Function calls
+        "char(",
+        "ascii(",
+        "substring(",
+        "concat(",
+        "cast(",
+        "convert(",
+        // Time-based attacks
+        "waitfor",
+        "sleep(",
+        "pg_sleep(",
+        "benchmark(",
+        // Information schema attacks
+        "information_schema",
+        "sys.tables",
+        "sys.columns",
+        // Encoding attempts
+        "%27",
+        "&#39;",
+        "&#x27;",
+        // Boolean-based blind injection
+        "' and 1=1",
+        "' and 1=2",
+        "' or 1=1",
+        "' or 1=2",
+        // Error-based injection
+        "extractvalue(",
+        "updatexml(",
+        "exp(",
+        "floor(",
+        "rand(",
+        "count(",
+        // Stacked queries
+        ";",
+        "||",
+        "&&",
+    ];
+
+    for pattern in &malicious_patterns {
+        if value_lower.contains(pattern) {
+            return Err(anyhow!(
+                "Potentially malicious input detected: '{}' contains '{}'",
+                value,
+                pattern
+            ));
+        }
+    }
+
+    // Additional checks for suspicious character sequences
+    if value.contains("'") && (value.contains("=") || value.contains(">") || value.contains("<")) {
+        return Err(anyhow!(
+            "Potentially malicious input detected: '{}' contains suspicious character combination",
+            value
+        ));
+    }
+
+    // Check for excessive special characters that might indicate encoding attempts
+    let special_char_count = value
+        .chars()
+        .filter(|c| !c.is_alphanumeric() && *c != ' ' && *c != '.' && *c != '-' && *c != '_')
+        .count();
+    if special_char_count > value.len() / 4 {
+        return Err(anyhow!(
+            "Potentially malicious input detected: '{}' contains excessive special characters",
+            value
+        ));
+    }
+
+    Ok(())
 }
 
 pub fn create_vectorize_table() -> String {
@@ -946,7 +1051,7 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
 
     #[test]
     fn test_filter_value_deserialize_sql_injection_basic() {
-        // Test basic SQL injection attempts
+        // Test basic SQL injection attempts - these should now be rejected
         let malicious_inputs = vec![
             "'; DROP TABLE users; --",
             "' OR '1'='1",
@@ -957,9 +1062,18 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
 
         for malicious_input in malicious_inputs {
             let json = format!("\"eq.{}\"", malicious_input);
-            let filter: FilterValue = serde_json::from_str(&json).unwrap();
-            assert_eq!(filter.operator, FilterOperator::Equal);
-            assert_eq!(filter.value.as_sql_value(), malicious_input);
+            let result: Result<FilterValue, _> = serde_json::from_str(&json);
+            assert!(
+                result.is_err(),
+                "Should reject malicious input: {}",
+                malicious_input
+            );
+            let error = result.unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("Potentially malicious input detected")
+            );
         }
     }
 
@@ -990,7 +1104,7 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
 
     #[test]
     fn test_filter_value_deserialize_sql_injection_script_tags() {
-        // Test XSS-style attacks that might be used in SQL injection
+        // Test XSS-style attacks that might be used in SQL injection - these should now be rejected
         let malicious_inputs = vec![
             "<script>alert('xss')</script>",
             "javascript:alert('xss')",
@@ -1000,15 +1114,24 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
 
         for malicious_input in malicious_inputs {
             let json = format!("\"eq.{}\"", malicious_input);
-            let filter: FilterValue = serde_json::from_str(&json).unwrap();
-            assert_eq!(filter.operator, FilterOperator::Equal);
-            assert_eq!(filter.value.as_sql_value(), malicious_input);
+            let result: Result<FilterValue, _> = serde_json::from_str(&json);
+            assert!(
+                result.is_err(),
+                "Should reject malicious input: {}",
+                malicious_input
+            );
+            let error = result.unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("Potentially malicious input detected")
+            );
         }
     }
 
     #[test]
     fn test_filter_value_deserialize_sql_injection_encoding_attempts() {
-        // Test various encoding attempts to bypass filters
+        // Test various encoding attempts to bypass filters - these should now be rejected
         let malicious_inputs = vec![
             "%27%20OR%201%3D1%20--",     // URL encoded
             "&#39; OR 1=1 --",           // HTML entity encoded
@@ -1018,15 +1141,24 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
 
         for malicious_input in malicious_inputs {
             let json = format!("\"eq.{}\"", malicious_input);
-            let filter: FilterValue = serde_json::from_str(&json).unwrap();
-            assert_eq!(filter.operator, FilterOperator::Equal);
-            assert_eq!(filter.value.as_sql_value(), malicious_input);
+            let result: Result<FilterValue, _> = serde_json::from_str(&json);
+            assert!(
+                result.is_err(),
+                "Should reject malicious input: {}",
+                malicious_input
+            );
+            let error = result.unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("Potentially malicious input detected")
+            );
         }
     }
 
     #[test]
     fn test_filter_value_deserialize_sql_injection_time_based() {
-        // Test time-based SQL injection attempts
+        // Test time-based SQL injection attempts - these should now be rejected
         let malicious_inputs = vec![
             "'; WAITFOR DELAY '00:00:05' --",
             "' OR SLEEP(5) --",
@@ -1036,15 +1168,24 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
 
         for malicious_input in malicious_inputs {
             let json = format!("\"eq.{}\"", malicious_input);
-            let filter: FilterValue = serde_json::from_str(&json).unwrap();
-            assert_eq!(filter.operator, FilterOperator::Equal);
-            assert_eq!(filter.value.as_sql_value(), malicious_input);
+            let result: Result<FilterValue, _> = serde_json::from_str(&json);
+            assert!(
+                result.is_err(),
+                "Should reject malicious input: {}",
+                malicious_input
+            );
+            let error = result.unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("Potentially malicious input detected")
+            );
         }
     }
 
     #[test]
     fn test_filter_value_deserialize_sql_injection_blind() {
-        // Test blind SQL injection attempts
+        // Test blind SQL injection attempts - these should now be rejected
         let malicious_inputs = vec![
             "' AND (SELECT SUBSTRING(password,1,1) FROM users WHERE username='admin')='a' --",
             "' OR (SELECT COUNT(*) FROM users WHERE username='admin' AND password LIKE 'a%')>0 --",
@@ -1054,15 +1195,24 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
 
         for malicious_input in malicious_inputs {
             let json = format!("\"eq.{}\"", malicious_input);
-            let filter: FilterValue = serde_json::from_str(&json).unwrap();
-            assert_eq!(filter.operator, FilterOperator::Equal);
-            assert_eq!(filter.value.as_sql_value(), malicious_input);
+            let result: Result<FilterValue, _> = serde_json::from_str(&json);
+            assert!(
+                result.is_err(),
+                "Should reject malicious input: {}",
+                malicious_input
+            );
+            let error = result.unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("Potentially malicious input detected")
+            );
         }
     }
 
     #[test]
     fn test_filter_value_deserialize_sql_injection_union() {
-        // Test UNION-based SQL injection attempts
+        // Test UNION-based SQL injection attempts - these should now be rejected
         let malicious_inputs = vec![
             "' UNION SELECT username, password FROM users --",
             "' UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL --",
@@ -1072,15 +1222,24 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
 
         for malicious_input in malicious_inputs {
             let json = format!("\"eq.{}\"", malicious_input);
-            let filter: FilterValue = serde_json::from_str(&json).unwrap();
-            assert_eq!(filter.operator, FilterOperator::Equal);
-            assert_eq!(filter.value.as_sql_value(), malicious_input);
+            let result: Result<FilterValue, _> = serde_json::from_str(&json);
+            assert!(
+                result.is_err(),
+                "Should reject malicious input: {}",
+                malicious_input
+            );
+            let error = result.unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("Potentially malicious input detected")
+            );
         }
     }
 
     #[test]
     fn test_filter_value_deserialize_sql_injection_error_based() {
-        // Test error-based SQL injection attempts
+        // Test error-based SQL injection attempts - these should now be rejected
         let malicious_inputs = vec![
             "' AND (SELECT * FROM (SELECT COUNT(*),CONCAT(version(),FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a) --",
             "' AND EXTRACTVALUE(1, CONCAT(0x7e, (SELECT version()), 0x7e)) --",
@@ -1089,9 +1248,18 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
 
         for malicious_input in malicious_inputs {
             let json = format!("\"eq.{}\"", malicious_input);
-            let filter: FilterValue = serde_json::from_str(&json).unwrap();
-            assert_eq!(filter.operator, FilterOperator::Equal);
-            assert_eq!(filter.value.as_sql_value(), malicious_input);
+            let result: Result<FilterValue, _> = serde_json::from_str(&json);
+            assert!(
+                result.is_err(),
+                "Should reject malicious input: {}",
+                malicious_input
+            );
+            let error = result.unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("Potentially malicious input detected")
+            );
         }
     }
 
