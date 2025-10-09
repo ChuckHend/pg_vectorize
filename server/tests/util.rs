@@ -146,7 +146,7 @@ pub mod common {
         .expect("unable to update test data");
     }
 
-    pub fn exec_psql(conn_string: &str, sql_content: &str) {
+    pub fn exec_psql(conn_string: &str, sql_content: &str) -> Result<(), String> {
         let output = Command::new("psql")
             .arg(conn_string)
             .arg("-c")
@@ -158,10 +158,12 @@ pub mod common {
                 "failed to execute SQL: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
-            panic!(
+            Err(format!(
                 "failed to execute SQL: {}",
                 String::from_utf8_lossy(&output.stderr)
-            );
+            ))
+        } else {
+            Ok(())
         }
     }
 }
