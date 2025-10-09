@@ -149,8 +149,8 @@ async fn test_search_filters() {
         resp.status()
     );
 
-    // filter a query by product_category
-    let params = format!("job_name={job_name}&query=pen&product_category=electronics",);
+    // filter a query by product_category (using eq operator)
+    let params = format!("job_name={job_name}&query=pen&product_category=eq.electronics",);
     let search_results = common::search_with_retry(&params, 9).await.unwrap();
 
     assert_eq!(search_results.len(), 9);
@@ -159,8 +159,8 @@ async fn test_search_filters() {
         assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
     }
 
-    // filter by price
-    let params = format!("job_name={job_name}&query=electronics&price=25");
+    // filter by price using less than operator
+    let params = format!("job_name={job_name}&query=electronics&price=lt.30");
     let search_results = common::search_with_retry(&params, 2).await.unwrap();
     assert_eq!(search_results.len(), 2);
     assert_eq!(
@@ -171,6 +171,90 @@ async fn test_search_filters() {
         search_results[1]["product_name"].as_str().unwrap(),
         "Alarm Clock"
     );
+
+    // test greater than or equal operator
+    let params = format!("job_name={job_name}&query=electronics&price=gte.25");
+    let search_results = common::search_with_retry(&params, 2).await.unwrap();
+    assert_eq!(search_results.len(), 2);
+
+    // test backward compatibility - no operator should default to equality
+    let params = format!("job_name={job_name}&query=pen&product_category=electronics",);
+    let search_results = common::search_with_retry(&params, 9).await.unwrap();
+    assert_eq!(search_results.len(), 9);
+    for result in search_results {
+        assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
+    }
+}
+
+#[tokio::test]
+async fn test_search_filter_operators() {
+    let mut rng = rand::rng();
+    let test_num = rng.random_range(1..100000);
+    let cfg = vectorize_core::config::Config::from_env();
+    let sql = std::fs::read_to_string("sql/example.sql").unwrap();
+    common::exec_psql(&cfg.database_url, &sql);
+
+    let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
+    // test table
+    let table = format!("test_filter_ops_{test_num}");
+    let drop_sql = format!("DROP TABLE IF EXISTS public.{table};");
+    let create_sql =
+        format!("CREATE TABLE public.{table} (LIKE public.my_products INCLUDING ALL);");
+    let insert_sql = format!("INSERT INTO public.{table} SELECT * FROM public.my_products;");
+
+    sqlx::query(&drop_sql).execute(&pool).await.unwrap();
+    sqlx::query(&create_sql).execute(&pool).await.unwrap();
+    sqlx::query(&insert_sql).execute(&pool).await.unwrap();
+
+    // initialize search job
+    let job_name = format!("test_filter_ops_{test_num}");
+    let payload = json!({
+        "job_name": job_name,
+        "src_table": table,
+        "src_schema": "public",
+        "src_columns": ["description"],
+        "primary_key": "product_id",
+        "update_time_col": "updated_at",
+        "model": "sentence-transformers/all-MiniLM-L6-v2"
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("http://localhost:8080/api/v1/table")
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "Response status: {:?}",
+        resp.status()
+    );
+
+    // Test different operators
+    // Greater than
+    let params = format!("job_name={job_name}&query=electronics&price=gt.20");
+    let search_results = common::search_with_retry(&params, 3).await.unwrap();
+    assert_eq!(search_results.len(), 3);
+
+    // Less than or equal
+    let params = format!("job_name={job_name}&query=electronics&price=lte.25");
+    let search_results = common::search_with_retry(&params, 2).await.unwrap();
+    assert_eq!(search_results.len(), 2);
+
+    // Test invalid operator (should return error)
+    let params = format!("job_name={job_name}&query=electronics&price=invalid.25");
+    let response = client
+        .get(&format!("http://localhost:8080/api/v1/search?{}", params))
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    // Should return an error for invalid operator
+    assert!(response.status().is_client_error() || response.status().is_server_error());
 }
 
 /// proxy is an incomplete feature
