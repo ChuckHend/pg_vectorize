@@ -7,6 +7,8 @@ use sqlx::postgres::PgRow;
 use sqlx::{Postgres, Row};
 use std::collections::BTreeMap;
 use tiktoken_rs::cl100k_base;
+pub const VECTORIZE_SCHEMA: &str = "vectorize";
+static TRIGGER_FN_PREFIX: &str = "vectorize.handle_update_";
 
 /// Filter operators supported by the search API
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -158,8 +160,6 @@ impl<'de> serde::Deserialize<'de> for FilterValue {
         deserializer.deserialize_str(FilterValueVisitor)
     }
 }
-pub const VECTORIZE_SCHEMA: &str = "vectorize";
-static TRIGGER_FN_PREFIX: &str = "vectorize.handle_update_";
 
 fn generate_column_concat(src_columns: &[String], prefix: &str) -> String {
     src_columns

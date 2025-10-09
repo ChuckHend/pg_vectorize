@@ -183,6 +183,66 @@ async fn test_search_filters() {
     for result in search_results {
         assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
     }
+
+    // test multiple filters - category first, then price
+    let params = format!(
+        "job_name={job_name}&query=electronics&product_category=eq.electronics&price=gte.25"
+    );
+    let search_results_category_first = common::search_with_retry(&params, 5).await.unwrap();
+    assert_eq!(search_results_category_first.len(), 5);
+    for result in &search_results_category_first {
+        assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
+        assert!(result["price"].as_f64().unwrap() >= 25.0);
+    }
+
+    // test multiple filters - price first, then category (different order)
+    let params = format!(
+        "job_name={job_name}&query=electronics&price=gte.25&product_category=eq.electronics"
+    );
+    let search_results_price_first = common::search_with_retry(&params, 5).await.unwrap();
+    assert_eq!(search_results_price_first.len(), 5);
+    for result in &search_results_price_first {
+        assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
+        assert!(result["price"].as_f64().unwrap() >= 25.0);
+    }
+
+    // verify that both filter orders produce the same results
+    assert_eq!(
+        search_results_category_first.len(),
+        search_results_price_first.len()
+    );
+    // Sort both results by product_id to ensure consistent comparison
+    let mut category_first_sorted = search_results_category_first.clone();
+    let mut price_first_sorted = search_results_price_first.clone();
+    category_first_sorted.sort_by(|a, b| {
+        a["product_id"]
+            .as_i64()
+            .unwrap()
+            .cmp(&b["product_id"].as_i64().unwrap())
+    });
+    price_first_sorted.sort_by(|a, b| {
+        a["product_id"]
+            .as_i64()
+            .unwrap()
+            .cmp(&b["product_id"].as_i64().unwrap())
+    });
+
+    for (i, (result1, result2)) in category_first_sorted
+        .iter()
+        .zip(price_first_sorted.iter())
+        .enumerate()
+    {
+        assert_eq!(
+            result1["product_id"], result2["product_id"],
+            "Product IDs should match at index {}",
+            i
+        );
+        assert_eq!(
+            result1["product_name"], result2["product_name"],
+            "Product names should match at index {}",
+            i
+        );
+    }
 }
 
 #[tokio::test]
