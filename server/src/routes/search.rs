@@ -152,6 +152,7 @@ pub async fn search(
             query::FilterValueType::String(s) => prepared_query.bind(s),
             query::FilterValueType::Integer(i) => prepared_query.bind(i),
             query::FilterValueType::Float(f) => prepared_query.bind(f),
+            query::FilterValueType::Boolean(b) => prepared_query.bind(b),
         };
     }
 
