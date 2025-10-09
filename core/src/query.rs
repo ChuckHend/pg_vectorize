@@ -7,59 +7,101 @@ use sqlx::postgres::PgRow;
 use sqlx::{Postgres, Row};
 use std::collections::BTreeMap;
 use tiktoken_rs::cl100k_base;
-pub const VECTORIZE_SCHEMA: &str = "vectorize";
-static TRIGGER_FN_PREFIX: &str = "vectorize.handle_update_";
 
-#[derive(Serialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum FilterValue {
-    String(String),
-    Integer(i64),
-    Float(f64),
-    Boolean(bool),
+/// Filter operators supported by the search API
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum FilterOperator {
+    /// Equal to (=)
+    Equal,
+    /// Greater than (>)
+    GreaterThan,
+    /// Greater than or equal (>=)
+    GreaterThanOrEqual,
+    /// Less than (<)
+    LessThan,
+    /// Less than or equal (<=)
+    LessThanOrEqual,
 }
 
+impl FilterOperator {
+    /// Convert operator to SQL operator string
+    pub fn to_sql(&self) -> &'static str {
+        match self {
+            FilterOperator::Equal => "=",
+            FilterOperator::GreaterThan => ">",
+            FilterOperator::GreaterThanOrEqual => ">=",
+            FilterOperator::LessThan => "<",
+            FilterOperator::LessThanOrEqual => "<=",
+        }
+    }
+}
+
+/// A filter value with an operator
+#[derive(Debug, Clone, Serialize)]
+pub struct FilterValue {
+    pub operator: FilterOperator,
+    pub value: String,
+}
+
+/// Custom deserializer for FilterValue that parses operator.value format
 impl<'de> serde::Deserialize<'de> for FilterValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let s = String::deserialize(deserializer)?;
+        use serde::de::{self, Visitor};
+        use std::fmt;
 
-        // Try to parse as boolean first
-        if let Ok(b) = s.parse::<bool>() {
-            return Ok(FilterValue::Boolean(b));
+        struct FilterValueVisitor;
+
+        impl<'de> Visitor<'de> for FilterValueVisitor {
+            type Value = FilterValue;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string in format 'operator.value' or just 'value'")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<FilterValue, E>
+            where
+                E: de::Error,
+            {
+                if let Some(dot_pos) = value.find('.') {
+                    let operator_str = &value[..dot_pos];
+                    let val = &value[dot_pos + 1..];
+
+                    let operator = match operator_str {
+                        "eq" => FilterOperator::Equal,
+                        "gt" => FilterOperator::GreaterThan,
+                        "gte" => FilterOperator::GreaterThanOrEqual,
+                        "lt" => FilterOperator::LessThan,
+                        "lte" => FilterOperator::LessThanOrEqual,
+                        _ => {
+                            return Err(de::Error::custom(format!(
+                                "Unknown operator: {}",
+                                operator_str
+                            )));
+                        }
+                    };
+
+                    Ok(FilterValue {
+                        operator,
+                        value: val.to_string(),
+                    })
+                } else {
+                    // Default to equality if no operator specified
+                    Ok(FilterValue {
+                        operator: FilterOperator::Equal,
+                        value: value.to_string(),
+                    })
+                }
+            }
         }
 
-        // Try to parse as integer
-        if let Ok(i) = s.parse::<i64>() {
-            return Ok(FilterValue::Integer(i));
-        }
-
-        // Try to parse as float
-        if let Ok(f) = s.parse::<f64>() {
-            return Ok(FilterValue::Float(f));
-        }
-
-        // Fall back to string
-
-        Ok(FilterValue::String(s))
+        deserializer.deserialize_str(FilterValueVisitor)
     }
 }
-
-impl FilterValue {
-    pub fn bind_to_query<'q>(
-        &'q self,
-        query: sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>,
-    ) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
-        match self {
-            FilterValue::String(s) => query.bind(s),
-            FilterValue::Integer(i) => query.bind(*i),
-            FilterValue::Float(f) => query.bind(*f),
-            FilterValue::Boolean(b) => query.bind(*b),
-        }
-    }
-}
+pub const VECTORIZE_SCHEMA: &str = "vectorize";
+static TRIGGER_FN_PREFIX: &str = "vectorize.handle_update_";
 
 fn generate_column_concat(src_columns: &[String], prefix: &str) -> String {
     src_columns
@@ -573,8 +615,9 @@ pub fn hybrid_search_query(
 
     let mut bind_value_counter: i16 = 3;
     let mut where_filter = "WHERE 1=1".to_string();
-    for column in filters.keys() {
-        let filt = format!(" AND t0.\"{column}\" = ${bind_value_counter}");
+    for (column, filter_value) in filters.iter() {
+        let operator = filter_value.operator.to_sql();
+        let filt = format!(" AND t0.\"{column}\" {operator} ${bind_value_counter}");
         where_filter.push_str(&filt);
         bind_value_counter += 1;
     }

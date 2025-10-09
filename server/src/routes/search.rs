@@ -8,117 +8,10 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use utoipa::ToSchema;
 use uuid::Uuid;
-use vectorize_core::query;
+use vectorize_core::query::{self, FilterValue};
 use vectorize_core::transformers::providers::prepare_generic_embedding_request;
 use vectorize_core::transformers::types::Inputs;
 use vectorize_core::types::VectorizeJob;
-
-/// Filter operators supported by the search API
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum FilterOperator {
-    /// Equal to (=)
-    #[serde(rename = "eq")]
-    Equal,
-    /// Greater than (>)
-    #[serde(rename = "gt")]
-    GreaterThan,
-    /// Greater than or equal (>=)
-    #[serde(rename = "gte")]
-    GreaterThanOrEqual,
-    /// Less than (<)
-    #[serde(rename = "lt")]
-    LessThan,
-    /// Less than or equal (<=)
-    #[serde(rename = "lte")]
-    LessThanOrEqual,
-}
-
-impl FilterOperator {
-    /// Convert operator to SQL operator string
-    pub fn to_sql(&self) -> &'static str {
-        match self {
-            FilterOperator::Equal => "=",
-            FilterOperator::GreaterThan => ">",
-            FilterOperator::GreaterThanOrEqual => ">=",
-            FilterOperator::LessThan => "<",
-            FilterOperator::LessThanOrEqual => "<=",
-        }
-    }
-}
-
-/// A filter value with an operator
-#[derive(Debug, Clone, Serialize)]
-pub struct FilterValue {
-    pub operator: FilterOperator,
-    pub value: String,
-}
-
-impl FilterValue {
-    /// Convert to the original FilterValue format for compatibility with vectorize_core
-    pub fn to_legacy_filter_value(&self) -> query::FilterValue {
-        // For now, we'll convert to String variant - this may need to be updated
-        // based on the actual FilterValue enum structure in vectorize_core
-        query::FilterValue::String(self.value.clone())
-    }
-}
-
-/// Custom deserializer for FilterValue that parses operator.value format
-impl<'de> Deserialize<'de> for FilterValue {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de::{self, Visitor};
-        use std::fmt;
-
-        struct FilterValueVisitor;
-
-        impl<'de> Visitor<'de> for FilterValueVisitor {
-            type Value = FilterValue;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a string in format 'operator.value' or just 'value'")
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<FilterValue, E>
-            where
-                E: de::Error,
-            {
-                if let Some(dot_pos) = value.find('.') {
-                    let operator_str = &value[..dot_pos];
-                    let val = &value[dot_pos + 1..];
-
-                    let operator = match operator_str {
-                        "eq" => FilterOperator::Equal,
-                        "gt" => FilterOperator::GreaterThan,
-                        "gte" => FilterOperator::GreaterThanOrEqual,
-                        "lt" => FilterOperator::LessThan,
-                        "lte" => FilterOperator::LessThanOrEqual,
-                        _ => {
-                            return Err(de::Error::custom(format!(
-                                "Unknown operator: {}",
-                                operator_str
-                            )));
-                        }
-                    };
-
-                    Ok(FilterValue {
-                        operator,
-                        value: val.to_string(),
-                    })
-                } else {
-                    // Default to equality if no operator specified
-                    Ok(FilterValue {
-                        operator: FilterOperator::Equal,
-                        value: value.to_string(),
-                    })
-                }
-            }
-        }
-
-        deserializer.deserialize_str(FilterValueVisitor)
-    }
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema, FromRow)]
 pub struct SearchRequest {
@@ -235,13 +128,6 @@ pub async fn search(
     let embedding_request = prepare_generic_embedding_request(&vectorizejob.model, &[input]);
     let embeddings = provider.generate_embedding(&embedding_request).await?;
 
-    // Convert our new filters to legacy format for compatibility with vectorize_core
-    let legacy_filters: BTreeMap<String, query::FilterValue> = payload
-        .filters
-        .iter()
-        .map(|(key, value)| (key.clone(), value.to_legacy_filter_value()))
-        .collect();
-
     let q = query::hybrid_search_query(
         &payload.job_name,
         &vectorizejob.src_schema,
@@ -253,16 +139,18 @@ pub async fn search(
         payload.rrf_k,
         payload.semantic_wt,
         payload.fts_wt,
-        &legacy_filters,
+        &payload.filters,
     );
+
+    log::warn!("Search query: {}", q);
 
     let mut prepared_query = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
         .bind(&payload.query);
 
-    // Bind filter values using the legacy format
-    for value in legacy_filters.values() {
-        prepared_query = value.bind_to_query(prepared_query);
+    // Bind filter values
+    for value in payload.filters.values() {
+        prepared_query = prepared_query.bind(&value.value);
     }
 
     let results = prepared_query.fetch_all(&**pool).await?;
