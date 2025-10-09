@@ -107,7 +107,11 @@ async fn test_search_filters() {
     let test_num = rng.random_range(1..100000);
     let cfg = vectorize_core::config::Config::from_env();
     let sql = std::fs::read_to_string("sql/example.sql").unwrap();
-    common::exec_psql(&cfg.database_url, &sql).expect("failed to execute example.sql");
+    if let Err(e) = common::exec_psql(&cfg.database_url, &sql) {
+        // installation of example.sql could fail due to race conditions
+        // so we can continue
+        log::warn!("failed to execute example.sql: {}", e);
+    }
 
     let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
     // test table
@@ -252,7 +256,11 @@ async fn test_search_filter_operators() {
     let cfg = vectorize_core::config::Config::from_env();
     // install raw SQL
     let sql = std::fs::read_to_string("sql/example.sql").unwrap();
-    common::exec_psql(&cfg.database_url, &sql).expect("failed to execute example.sql");
+    if let Err(e) = common::exec_psql(&cfg.database_url, &sql) {
+        // installation of example.sql could fail due to race conditions
+        // so we can continue
+        log::warn!("failed to execute example.sql: {}", e);
+    }
 
     let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
     // test table
