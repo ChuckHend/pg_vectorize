@@ -114,10 +114,10 @@ impl<'de> serde::Deserialize<'de> for FilterValue {
                                 FilterValueType::String(val.to_string())
                             }
                         }
-                        FilterOperator::GreaterThan | 
-                        FilterOperator::GreaterThanOrEqual |
-                        FilterOperator::LessThan |
-                        FilterOperator::LessThanOrEqual => {
+                        FilterOperator::GreaterThan
+                        | FilterOperator::GreaterThanOrEqual
+                        | FilterOperator::LessThan
+                        | FilterOperator::LessThanOrEqual => {
                             // For comparison operators, require numeric values
                             if let Ok(int_val) = val.parse::<i64>() {
                                 FilterValueType::Integer(int_val)

@@ -159,7 +159,6 @@ async fn test_search_filters() {
         assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
     }
 
-    // filter by price using less than operator
     let params = format!("job_name={job_name}&query=electronics&price=eq.25");
     let search_results = common::search_with_retry(&params, 2).await.unwrap();
     assert_eq!(search_results.len(), 2);
