@@ -300,12 +300,12 @@ async fn test_search_filter_operators() {
     assert_eq!(search_results.len(), 14);
 
     // Less than or equal
-    let params = format!("job_name={job_name}&query=electronics&price=lte.25limit=100");
+    let params = format!("job_name={job_name}&query=electronics&price=lte.25&limit=100");
     let search_results = common::search_with_retry(&params, 30).await.unwrap();
     assert_eq!(search_results.len(), 30);
 
     // Test float values
-    let params = format!("job_name={job_name}&query=electronics&price=gte.24.5limit=1000");
+    let params = format!("job_name={job_name}&query=electronics&price=gte.24.5&limit=1000");
     let search_results = common::search_with_retry(&params, 12).await.unwrap();
     assert_eq!(search_results.len(), 12);
 

@@ -86,10 +86,10 @@ pub async fn search(
     // check inputs and filters are valid if they exist and create a SQL string for them
     query::check_input(&payload.job_name)?;
     if !payload.filters.is_empty() {
-        for (key, value) in &payload.filters {
-            // validate key and value
+        for key in payload.filters.keys() {
+            // validate key only (column names should be alphanumeric + underscore)
             query::check_input(key)?;
-            query::check_input(&value.value.as_sql_value())?;
+            // Note: filter values are validated during deserialization in FilterValue
         }
     }
 
