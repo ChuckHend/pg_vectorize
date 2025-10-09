@@ -40,7 +40,26 @@ impl FilterOperator {
 #[derive(Debug, Clone, Serialize)]
 pub struct FilterValue {
     pub operator: FilterOperator,
-    pub value: String,
+    pub value: FilterValueType,
+}
+
+/// The actual value stored in a filter - can be string or numeric
+#[derive(Debug, Clone, Serialize)]
+pub enum FilterValueType {
+    String(String),
+    Integer(i64),
+    Float(f64),
+}
+
+impl FilterValueType {
+    /// Get the value as a string for SQL binding
+    pub fn as_sql_value(&self) -> String {
+        match self {
+            FilterValueType::String(s) => s.clone(),
+            FilterValueType::Integer(i) => i.to_string(),
+            FilterValueType::Float(f) => f.to_string(),
+        }
+    }
 }
 
 /// Custom deserializer for FilterValue that parses operator.value format
@@ -83,15 +102,54 @@ impl<'de> serde::Deserialize<'de> for FilterValue {
                         }
                     };
 
+                    // Parse the value based on the operator
+                    let parsed_value = match operator {
+                        FilterOperator::Equal => {
+                            // For equality, try to parse as number first, fallback to string
+                            if let Ok(int_val) = val.parse::<i64>() {
+                                FilterValueType::Integer(int_val)
+                            } else if let Ok(float_val) = val.parse::<f64>() {
+                                FilterValueType::Float(float_val)
+                            } else {
+                                FilterValueType::String(val.to_string())
+                            }
+                        }
+                        FilterOperator::GreaterThan | 
+                        FilterOperator::GreaterThanOrEqual |
+                        FilterOperator::LessThan |
+                        FilterOperator::LessThanOrEqual => {
+                            // For comparison operators, require numeric values
+                            if let Ok(int_val) = val.parse::<i64>() {
+                                FilterValueType::Integer(int_val)
+                            } else if let Ok(float_val) = val.parse::<f64>() {
+                                FilterValueType::Float(float_val)
+                            } else {
+                                return Err(de::Error::custom(format!(
+                                    "Comparison operators (gt, gte, lt, lte) require numeric values, got: '{}'",
+                                    val
+                                )));
+                            }
+                        }
+                    };
+
                     Ok(FilterValue {
                         operator,
-                        value: val.to_string(),
+                        value: parsed_value,
                     })
                 } else {
                     // Default to equality if no operator specified
+                    // Try to parse as number first, fallback to string
+                    let parsed_value = if let Ok(int_val) = value.parse::<i64>() {
+                        FilterValueType::Integer(int_val)
+                    } else if let Ok(float_val) = value.parse::<f64>() {
+                        FilterValueType::Float(float_val)
+                    } else {
+                        FilterValueType::String(value.to_string())
+                    };
+
                     Ok(FilterValue {
                         operator: FilterOperator::Equal,
-                        value: value.to_string(),
+                        value: parsed_value,
                     })
                 }
             }

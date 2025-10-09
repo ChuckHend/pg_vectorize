@@ -89,7 +89,7 @@ pub async fn search(
         for (key, value) in &payload.filters {
             // validate key and value
             query::check_input(key)?;
-            query::check_input(&value.value)?;
+            query::check_input(&value.value.as_sql_value())?;
         }
     }
 
@@ -142,15 +142,17 @@ pub async fn search(
         &payload.filters,
     );
 
-    log::warn!("Search query: {}", q);
-
     let mut prepared_query = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
         .bind(&payload.query);
 
     // Bind filter values
     for value in payload.filters.values() {
-        prepared_query = prepared_query.bind(&value.value);
+        prepared_query = match &value.value {
+            query::FilterValueType::String(s) => prepared_query.bind(s),
+            query::FilterValueType::Integer(i) => prepared_query.bind(i),
+            query::FilterValueType::Float(f) => prepared_query.bind(f),
+        };
     }
 
     let results = prepared_query.fetch_all(&**pool).await?;

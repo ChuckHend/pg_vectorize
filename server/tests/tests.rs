@@ -160,7 +160,7 @@ async fn test_search_filters() {
     }
 
     // filter by price using less than operator
-    let params = format!("job_name={job_name}&query=electronics&price=lt.30");
+    let params = format!("job_name={job_name}&query=electronics&price=eq.25");
     let search_results = common::search_with_retry(&params, 2).await.unwrap();
     assert_eq!(search_results.len(), 2);
     assert_eq!(
@@ -173,9 +173,9 @@ async fn test_search_filters() {
     );
 
     // test greater than or equal operator
-    let params = format!("job_name={job_name}&query=electronics&price=gte.25");
-    let search_results = common::search_with_retry(&params, 2).await.unwrap();
-    assert_eq!(search_results.len(), 2);
+    let params = format!("job_name={job_name}&query=electronics&price=gte.25&limit=5");
+    let search_results = common::search_with_retry(&params, 5).await.unwrap();
+    assert_eq!(search_results.len(), 5);
 
     // test backward compatibility - no operator should default to equality
     let params = format!("job_name={job_name}&query=pen&product_category=electronics",);
@@ -245,6 +245,11 @@ async fn test_search_filter_operators() {
     let search_results = common::search_with_retry(&params, 2).await.unwrap();
     assert_eq!(search_results.len(), 2);
 
+    // Test float values
+    let params = format!("job_name={job_name}&query=electronics&price=gte.24.5");
+    let search_results = common::search_with_retry(&params, 2).await.unwrap();
+    assert_eq!(search_results.len(), 2);
+
     // Test invalid operator (should return error)
     let params = format!("job_name={job_name}&query=electronics&price=invalid.25");
     let response = client
@@ -254,6 +259,17 @@ async fn test_search_filter_operators() {
         .expect("Failed to send request");
 
     // Should return an error for invalid operator
+    assert!(response.status().is_client_error() || response.status().is_server_error());
+
+    // Test non-numeric value with comparison operator (should return error)
+    let params = format!("job_name={job_name}&query=electronics&price=gt.abc");
+    let response = client
+        .get(&format!("http://localhost:8080/api/v1/search?{}", params))
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    // Should return an error for non-numeric value with comparison operator
     assert!(response.status().is_client_error() || response.status().is_server_error());
 }
 

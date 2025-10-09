@@ -76,7 +76,10 @@ pub mod common {
 
             // Check if we've exceeded the timeout
             if start_time.elapsed() >= timeout_duration {
-                panic!("Search request timed out after 10 seconds");
+                Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "Search request timed out after 10 seconds",
+                )))?
             }
 
             // Wait before retrying
