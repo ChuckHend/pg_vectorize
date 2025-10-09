@@ -250,6 +250,7 @@ async fn test_search_filter_operators() {
     let mut rng = rand::rng();
     let test_num = rng.random_range(1..100000);
     let cfg = vectorize_core::config::Config::from_env();
+    // install raw SQL
     let sql = std::fs::read_to_string("sql/example.sql").unwrap();
     common::exec_psql(&cfg.database_url, &sql).expect("failed to execute example.sql");
 
