@@ -52,10 +52,10 @@ impl AppState {
         let job_cache = Arc::new(RwLock::new(job_cache));
 
         // listen for job change notifications
-        // if let Err(e) = cache::setup_job_change_notifications(&db_pool).await {
-        //     tracing::warn!("Failed to setup job change notifications: {e}");
-        // }
-        // Self::start_cache_sync_listener_task(&cache_pool, &job_cache).await;
+        if let Err(e) = cache::setup_job_change_notifications(&db_pool).await {
+            tracing::warn!("Failed to setup job change notifications: {e}");
+        }
+        Self::start_cache_sync_listener_task(&cache_pool, &job_cache).await;
 
         let worker_health = Arc::new(RwLock::new(WorkerHealth {
             status: vectorize_worker::WorkerStatus::Starting,
