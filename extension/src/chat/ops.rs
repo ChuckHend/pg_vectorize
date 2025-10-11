@@ -5,6 +5,7 @@ use crate::util::get_vectorize_meta_spi;
 use anyhow::{anyhow, Result};
 use handlebars::Handlebars;
 use pgrx::prelude::*;
+use std::collections::BTreeMap;
 use vectorize_core::guc::ModelGucConfig;
 use vectorize_core::transformers::providers::ollama::OllamaProvider;
 use vectorize_core::transformers::providers::openai::OpenAIProvider;
@@ -57,7 +58,14 @@ pub fn call_chat(
     let pk = job_params.primary_key;
     let columns = vec![pk.clone(), content_column.clone()];
 
-    let raw_search = search::search(job_name, query, api_key.clone(), columns, num_context, None)?;
+    let raw_search = search::search(
+        job_name,
+        query,
+        api_key.clone(),
+        columns,
+        num_context,
+        &BTreeMap::new(),
+    )?;
 
     let mut search_results: Vec<ContextualSearch> = Vec::new();
     for s in raw_search {

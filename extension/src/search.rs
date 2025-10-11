@@ -10,10 +10,11 @@ use anyhow::{Context, Result};
 use pgrx::prelude::*;
 use pgrx::JsonB;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use vectorize_core::guc::VectorizeGuc;
 use vectorize_core::query;
-use vectorize_core::query::{create_event_trigger, create_trigger_handler};
+use vectorize_core::query::{create_event_trigger, create_trigger_handler, FilterValue};
 use vectorize_core::transformers::providers::get_provider;
 use vectorize_core::transformers::providers::ollama::check_model_host;
 use vectorize_core::types::{self, Model, ModelSource, TableMethod, VectorizeMeta};
@@ -282,7 +283,7 @@ pub fn hybrid_search(
     api_key: Option<String>,
     return_columns: Vec<String>,
     num_results: i32,
-    where_clause: Option<String>,
+    filters: &BTreeMap<String, FilterValue>,
 ) -> Result<Vec<JsonB>> {
     let semantic_weight: i32 = guc::SEMANTIC_WEIGHT.get();
 
@@ -296,7 +297,7 @@ pub fn hybrid_search(
         api_key,
         return_columns,
         num_results * 2,
-        where_clause,
+        filters,
     )?;
 
     // Use a HashMap with serde_json::Value as the key
@@ -374,7 +375,7 @@ pub fn search(
     api_key: Option<String>,
     return_columns: Vec<String>,
     num_results: i32,
-    where_clause: Option<String>,
+    filters: &BTreeMap<String, FilterValue>,
 ) -> Result<Vec<JsonB>> {
     let project_meta: VectorizeMeta = util::get_vectorize_meta_spi(job_name)?;
     let proj_params: types::JobParams = serde_json::from_value(
@@ -402,7 +403,7 @@ pub fn search(
                 &return_columns,
                 num_results,
                 &embeddings[0],
-                where_clause,
+                filters,
             )
         }
     }
@@ -414,7 +415,7 @@ pub fn cosine_similarity_search(
     return_columns: &[String],
     num_results: i32,
     embeddings: &[f64],
-    where_clause: Option<String>,
+    filters: &BTreeMap<String, FilterValue>,
 ) -> Result<Vec<JsonB>> {
     let schema = job_params.schema.clone();
     let table = job_params.relation.clone();
@@ -427,7 +428,7 @@ pub fn cosine_similarity_search(
             &table,
             return_columns,
             num_results,
-            where_clause,
+            filters,
         ),
         TableMethod::join => query::join_table_cosine_similarity(
             project,
@@ -436,11 +437,14 @@ pub fn cosine_similarity_search(
             &job_params.primary_key,
             return_columns,
             num_results,
-            where_clause,
+            filters,
         ),
     };
     Spi::connect(|client| {
         let mut results: Vec<JsonB> = Vec::new();
+
+        // For now, we'll use the original approach with embeddings only
+        // TODO: Implement proper filter value binding
         let tup_table = client.select(&query, None, &[embeddings.into()])?;
         for row in tup_table {
             match row["results"].value()? {
@@ -458,13 +462,18 @@ fn single_table_cosine_similarity(
     table: &str,
     return_columns: &[String],
     num_results: i32,
-    where_clause: Option<String>,
+    filters: &BTreeMap<String, FilterValue>,
 ) -> String {
-    let where_str = if let Some(w) = where_clause {
-        format!("AND {}", w)
-    } else {
-        "".to_string()
-    };
+    let mut bind_value_counter: i16 = 2; // Start at $2 since $1 is the vector
+    let mut where_filter = format!("WHERE {project}_updated_at is NOT NULL");
+
+    for (column, filter_value) in filters.iter() {
+        let operator = filter_value.operator.to_sql();
+        let filt = format!(" AND \"{column}\" {operator} ${bind_value_counter}");
+        where_filter.push_str(&filt);
+        bind_value_counter += 1;
+    }
+
     format!(
         "
     SELECT to_jsonb(t) as results
@@ -473,8 +482,7 @@ fn single_table_cosine_similarity(
         1 - ({project}_embeddings <=> $1::vector) AS similarity_score,
         {cols}
     FROM {schema}.{table}
-    WHERE {project}_updated_at is NOT NULL
-    {where_str}
+    {where_filter}
     ORDER BY similarity_score DESC
     LIMIT {num_results}
     ) t

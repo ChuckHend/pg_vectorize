@@ -13,6 +13,8 @@ use vectorize_core::types::{JobParams, Model};
 
 use anyhow::Result;
 use pgrx::prelude::*;
+use std::collections::BTreeMap;
+use vectorize_core::query::{FilterValue, FilterValueType};
 
 #[pg_extern]
 fn chunk_table(
@@ -122,13 +124,25 @@ fn search(
     num_results: default!(i32, 10),
     where_sql: default!(Option<String>, "NULL"),
 ) -> Result<TableIterator<'static, (name!(search_results, pgrx::JsonB),)>> {
+    let filters = where_sql
+        .map(|s| {
+            BTreeMap::from_iter(vec![(
+                "where_clause".to_string(),
+                FilterValue {
+                    operator: vectorize_core::query::FilterOperator::Equal,
+                    value: FilterValueType::String(s),
+                },
+            )])
+        })
+        .unwrap_or_default();
+
     let search_results = search::search(
         &job_name,
         &query,
         api_key,
         return_columns,
         num_results,
-        where_sql,
+        &filters,
     )?;
     Ok(TableIterator::new(search_results.into_iter().map(|r| (r,))))
 }
@@ -145,13 +159,24 @@ fn hybrid_search(
     num_results: default!(i32, 10),
     where_sql: default!(Option<String>, "NULL"),
 ) -> Result<TableIterator<'static, (name!(search_results, pgrx::JsonB),)>> {
+    let parsed_filters = where_sql
+        .map(|s| {
+            BTreeMap::from_iter(vec![(
+                "where_clause".to_string(),
+                FilterValue {
+                    operator: vectorize_core::query::FilterOperator::Equal,
+                    value: FilterValueType::String(s),
+                },
+            )])
+        })
+        .unwrap_or_default();
     let search_results = search::hybrid_search(
         &job_name,
         &query,
         api_key,
         return_columns,
         num_results,
-        where_sql,
+        &parsed_filters,
     )?;
     Ok(TableIterator::new(search_results.into_iter().map(|r| (r,))))
 }
