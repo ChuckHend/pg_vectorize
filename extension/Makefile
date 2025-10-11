@@ -42,6 +42,7 @@ clean:
 setup.dependencies: install-pg_cron install-pgvector install-pgmq install-vectorscale
 setup.shared_preload_libraries:
 	echo "shared_preload_libraries = 'pg_cron, vectorize'" >> ~/.pgrx/data-${PG_VERSION}/postgresql.conf
+	echo "cron.database_name = 'postgres'" >> ~/.pgrx/data-${PG_VERSION}/postgresql.conf
 setup.urls:
 	echo "vectorize.embedding_service_url = 'http://localhost:3000/v1'" >> ~/.pgrx/data-${PG_VERSION}/postgresql.conf
 	echo "vectorize.ollama_service_url = 'http://localhost:3001'" >> ~/.pgrx/data-${PG_VERSION}/postgresql.conf
@@ -93,7 +94,7 @@ test-integration:
 	cargo test ${TEST_NAME} -- --ignored --test-threads=1 --nocapture
 
 test-unit:
-	cargo test ${TEST_NAME} -- --test-threads=1
+	cargo test ${TEST_NAME} -- --test-threads=1 --nocapture
 
 test-version:
 	git fetch --tags

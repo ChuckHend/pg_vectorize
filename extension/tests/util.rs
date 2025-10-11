@@ -7,7 +7,6 @@ pub mod common {
     use sqlx::{Pool, Postgres, Row};
     use url::{ParseError, Url};
 
-    #[allow(dead_code)]
     #[derive(FromRow, Debug, serde::Deserialize)]
     pub struct SearchResult {
         pub product_id: i32,
@@ -16,7 +15,6 @@ pub mod common {
         pub similarity_score: f64,
     }
 
-    #[allow(dead_code)]
     #[derive(FromRow, Debug, Serialize)]
     pub struct SearchJSON {
         pub search_results: serde_json::Value,

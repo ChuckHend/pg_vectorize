@@ -1,8 +1,15 @@
-use log::{error, info};
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpStream;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::RwLock;
 use tokio::time::timeout;
+use tracing::{error, info};
+use url::Url;
+use vectorize_core::types::VectorizeJob;
 
 use super::message_parser::{log_message_processing, try_parse_complete_message};
 use super::protocol::{BUFFER_SIZE, ProxyConfig, WireProxyError};
@@ -128,4 +135,56 @@ where
 
     info!("Standard proxy stream closed: {total_bytes} bytes transferred");
     Ok(())
+}
+
+pub async fn start_postgres_proxy(
+    proxy_port: u16,
+    database_url: String,
+    job_cache: Arc<RwLock<HashMap<String, VectorizeJob>>>,
+    db_pool: sqlx::PgPool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let bind_address = "0.0.0.0";
+    let timeout = 30;
+
+    let listen_addr: SocketAddr = format!("{}:{}", bind_address, proxy_port).parse()?;
+
+    let url = Url::parse(&database_url)?;
+    let postgres_host = url.host_str().unwrap();
+    let postgres_port = url.port().unwrap();
+
+    let postgres_addr: SocketAddr = format!("{postgres_host}:{postgres_port}")
+        .to_socket_addrs()?
+        .next()
+        .ok_or("Failed to resolve PostgreSQL host address")?;
+
+    let config = Arc::new(ProxyConfig {
+        postgres_addr,
+        timeout: Duration::from_secs(timeout),
+        jobmap: job_cache,
+        db_pool,
+        prepared_statements: Arc::new(RwLock::new(HashMap::new())),
+    });
+
+    info!("Proxy listening on: {listen_addr}");
+    info!("Forwarding to PostgreSQL at: {postgres_addr}");
+
+    let listener = TcpListener::bind(listen_addr).await?;
+
+    loop {
+        match listener.accept().await {
+            Ok((client_stream, client_addr)) => {
+                info!("New proxy connection from: {client_addr}");
+
+                let config = Arc::clone(&config);
+                tokio::spawn(async move {
+                    if let Err(e) = handle_connection_with_timeout(client_stream, config).await {
+                        error!("Proxy connection error from {client_addr}: {e}");
+                    }
+                });
+            }
+            Err(e) => {
+                error!("Failed to accept proxy connection: {e}");
+            }
+        }
+    }
 }

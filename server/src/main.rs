@@ -1,87 +1,57 @@
 use actix_cors::Cors;
 use actix_web::{App, HttpServer, middleware, web};
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::net::ToSocketAddrs;
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::TcpListener;
-use tokio::sync::RwLock;
-use tracing::{error, info, warn};
-use url::Url;
+use tracing::error;
 
 use vectorize_core::config::Config;
-use vectorize_core::init;
-use vectorize_core::types::VectorizeJob;
-use vectorize_proxy::{
-    ProxyConfig, handle_connection_with_timeout, load_initial_job_cache,
-    setup_job_change_notifications, start_cache_sync_listener,
-};
+use vectorize_proxy::start_postgres_proxy;
+use vectorize_server::app_state::AppState;
 use vectorize_worker::{WorkerHealthMonitor, start_vectorize_worker_with_monitoring};
 
 #[actix_web::main]
 async fn main() {
-    // Initialize tracing subscriber (simple default formatter)
     tracing_subscriber::fmt().with_target(false).init();
 
     let cfg = Config::from_env();
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(cfg.database_pool_max)
-        .connect(&cfg.database_url)
-        .await
-        .expect("unable to connect to postgres");
 
-    // Create a separate connection pool for cache refresher
-    let cache_pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(cfg.database_cache_pool_max)
-        .connect(&cfg.database_url)
+    let app_state = AppState::new(cfg)
         .await
-        .expect("unable to connect to postgres for cache refresher");
-    let server_port = cfg.webserver_port;
-    let server_workers = cfg.num_server_workers;
-    init::init_project(&pool)
-        .await
-        .expect("Failed to initialize project");
+        .expect("Failed to initialize application state");
 
-    // Load initial job cache and setup job change notifications
-    let jobcache = load_initial_job_cache(&pool)
-        .await
-        .expect("Failed to load initial job cache");
-    let jobcache = Arc::new(RwLock::new(jobcache));
+    // start the PostgreSQL proxy if enabled
+    if app_state.config.proxy_enabled {
+        let proxy_port = app_state.config.vectorize_proxy_port;
+        let database_url = app_state.config.database_url.clone();
+        let job_cache = app_state.job_cache.clone();
+        let db_pool = app_state.db_pool.clone();
 
-    if let Err(e) = setup_job_change_notifications(&pool).await {
-        warn!("Failed to setup job change notifications: {e}");
-    }
-
-    // Start the PostgreSQL proxy if enabled
-    if cfg.proxy_enabled {
-        let proxy_pool = pool.clone();
-        let proxy_cfg = cfg.clone();
-        let proxy_jobcache = Arc::clone(&jobcache);
-        let proxy_cache_pool = cache_pool.clone();
         tokio::spawn(async move {
-            if let Err(e) =
-                start_postgres_proxy(proxy_cfg, proxy_pool, proxy_jobcache, proxy_cache_pool).await
+            if let Err(e) = start_postgres_proxy(proxy_port, database_url, job_cache, db_pool).await
             {
                 error!("Failed to start PostgreSQL proxy: {e}");
             }
         });
     }
 
-    // Start the vectorize worker with health monitoring
-    let worker_pool = pool.clone();
-    let worker_cfg = cfg.clone();
+    // start the vectorize worker with health monitoring
+    let worker_state = app_state.clone();
     let worker_health_monitor = WorkerHealthMonitor::new();
-    let worker_health_for_routes = worker_health_monitor.get_arc_clone();
 
     tokio::spawn(async move {
-        if let Err(e) =
-            start_vectorize_worker_with_monitoring(worker_cfg, worker_pool, worker_health_monitor)
-                .await
+        if let Err(e) = start_vectorize_worker_with_monitoring(
+            worker_state.config.clone(),
+            worker_state.db_pool.clone(),
+            worker_health_monitor,
+        )
+        .await
         {
             error!("Failed to start vectorize worker: {e}");
         }
     });
+
+    // store values before moving app_state
+    let server_workers = app_state.config.num_server_workers;
+    let server_port = app_state.config.webserver_port;
 
     let _ = HttpServer::new(move || {
         let cors = Cors::permissive();
@@ -89,10 +59,7 @@ async fn main() {
         App::new()
             .wrap(cors)
             .wrap(middleware::Logger::default())
-            .app_data(web::Data::new(cfg.clone()))
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(worker_health_for_routes.clone()))
-            .app_data(web::Data::new(jobcache.clone()))
+            .app_data(web::Data::new(app_state.clone()))
             .configure(vectorize_server::server::route_config)
             .configure(vectorize_server::routes::health::configure_health_routes)
     })
@@ -102,74 +69,4 @@ async fn main() {
     .expect("Failed to bind server")
     .run()
     .await;
-}
-
-async fn start_postgres_proxy(
-    cfg: Config,
-    pool: sqlx::PgPool,
-    jobmap: Arc<RwLock<HashMap<String, VectorizeJob>>>,
-    cache_pool: sqlx::PgPool,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let bind_address = "0.0.0.0";
-    let timeout = 30;
-
-    let listen_addr: SocketAddr =
-        format!("{}:{}", bind_address, cfg.vectorize_proxy_port).parse()?;
-
-    let url = Url::parse(&cfg.database_url)?;
-    let postgres_host = url.host_str().unwrap();
-    let postgres_port = url.port().unwrap();
-
-    let postgres_addr: SocketAddr = format!("{postgres_host}:{postgres_port}")
-        .to_socket_addrs()?
-        .next()
-        .ok_or("Failed to resolve PostgreSQL host address")?;
-
-    let config = Arc::new(ProxyConfig {
-        postgres_addr,
-        timeout: Duration::from_secs(timeout),
-        jobmap: Arc::clone(&jobmap),
-        db_pool: pool.clone(),
-        prepared_statements: Arc::new(RwLock::new(HashMap::new())),
-    });
-
-    info!("Proxy listening on: {listen_addr}");
-    info!("Forwarding to PostgreSQL at: {postgres_addr}");
-
-    // Start cache sync listener with its own connection pool
-    let cache_pool_for_sync = cache_pool.clone();
-    let jobmap_for_sync = Arc::clone(&jobmap);
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(1)).await;
-        let sync_config = Arc::new(ProxyConfig {
-            postgres_addr,
-            timeout: Duration::from_secs(timeout),
-            jobmap: jobmap_for_sync,
-            db_pool: cache_pool_for_sync,
-            prepared_statements: Arc::new(RwLock::new(HashMap::new())),
-        });
-        if let Err(e) = start_cache_sync_listener(sync_config).await {
-            error!("Cache synchronization error: {e}");
-        }
-    });
-
-    let listener = TcpListener::bind(listen_addr).await?;
-
-    loop {
-        match listener.accept().await {
-            Ok((client_stream, client_addr)) => {
-                info!("New proxy connection from: {client_addr}");
-
-                let config = Arc::clone(&config);
-                tokio::spawn(async move {
-                    if let Err(e) = handle_connection_with_timeout(client_stream, config).await {
-                        error!("Proxy connection error from {client_addr}: {e}");
-                    }
-                });
-            }
-            Err(e) => {
-                error!("Failed to accept proxy connection: {e}");
-            }
-        }
-    }
 }

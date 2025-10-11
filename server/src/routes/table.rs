@@ -1,10 +1,7 @@
+use crate::app_state::AppState;
 use crate::errors::ServerError;
 use actix_web::{HttpResponse, post, web};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use vectorize_core::init::{self, get_column_datatype};
@@ -27,15 +24,14 @@ pub struct JobResponse {
 )]
 #[post("/table")]
 pub async fn table(
-    dbclient: web::Data<PgPool>,
-    jobmap: web::Data<Arc<RwLock<HashMap<String, VectorizeJob>>>>,
+    app_state: web::Data<AppState>,
     payload: web::Json<VectorizeJob>,
 ) -> Result<HttpResponse, ServerError> {
     let payload = payload.into_inner();
 
     // validate update_time_col is timestamptz
     let datatype = get_column_datatype(
-        &dbclient,
+        &app_state.db_pool,
         &payload.src_schema,
         &payload.src_table,
         &payload.update_time_col,
@@ -52,11 +48,11 @@ pub async fn table(
         )));
     }
 
-    let job_id = init::initialize_job(&dbclient, &payload).await?;
+    let job_id = init::initialize_job(&app_state.db_pool, &payload).await?;
 
     // Update the job cache with the new job information
     {
-        let mut job_cache = jobmap.write().await;
+        let mut job_cache = app_state.job_cache.write().await;
         job_cache.insert(payload.job_name.clone(), payload.clone());
     }
 
