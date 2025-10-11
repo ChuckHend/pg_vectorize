@@ -13,5 +13,8 @@ serde_json = { workspace = true }
 sqlx = { workspace = true}
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+url = { workspace = true }
 
 pgwire = { version = "0.30", features = ["server-api-aws-lc-rs"] }

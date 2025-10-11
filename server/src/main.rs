@@ -1,17 +1,10 @@
 use actix_cors::Cors;
 use actix_web::{App, HttpServer, middleware, web};
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::net::ToSocketAddrs;
-use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::TcpListener;
-use tokio::sync::RwLock;
-use tracing::{error, info};
-use url::Url;
+use tracing::error;
 
 use vectorize_core::config::Config;
-use vectorize_proxy::{ProxyConfig, handle_connection_with_timeout};
+use vectorize_proxy::start_postgres_proxy;
 use vectorize_server::app_state::AppState;
 use vectorize_worker::{WorkerHealthMonitor, start_vectorize_worker_with_monitoring};
 
@@ -27,9 +20,14 @@ async fn main() {
 
     // start the PostgreSQL proxy if enabled
     if app_state.config.proxy_enabled {
-        let proxy_state = app_state.clone();
+        let proxy_port = app_state.config.vectorize_proxy_port;
+        let database_url = app_state.config.database_url.clone();
+        let job_cache = app_state.job_cache.clone();
+        let db_pool = app_state.db_pool.clone();
+
         tokio::spawn(async move {
-            if let Err(e) = start_postgres_proxy(proxy_state).await {
+            if let Err(e) = start_postgres_proxy(proxy_port, database_url, job_cache, db_pool).await
+            {
                 error!("Failed to start PostgreSQL proxy: {e}");
             }
         });
@@ -71,52 +69,4 @@ async fn main() {
     .expect("Failed to bind server")
     .run()
     .await;
-}
-
-async fn start_postgres_proxy(app_state: AppState) -> Result<(), Box<dyn std::error::Error>> {
-    let bind_address = "0.0.0.0";
-    let timeout = 30;
-
-    let listen_addr: SocketAddr =
-        format!("{}:{}", bind_address, app_state.config.vectorize_proxy_port).parse()?;
-
-    let url = Url::parse(&app_state.config.database_url)?;
-    let postgres_host = url.host_str().unwrap();
-    let postgres_port = url.port().unwrap();
-
-    let postgres_addr: SocketAddr = format!("{postgres_host}:{postgres_port}")
-        .to_socket_addrs()?
-        .next()
-        .ok_or("Failed to resolve PostgreSQL host address")?;
-
-    let config = Arc::new(ProxyConfig {
-        postgres_addr,
-        timeout: Duration::from_secs(timeout),
-        jobmap: app_state.job_cache.clone(),
-        db_pool: app_state.db_pool.clone(),
-        prepared_statements: Arc::new(RwLock::new(HashMap::new())),
-    });
-
-    info!("Proxy listening on: {listen_addr}");
-    info!("Forwarding to PostgreSQL at: {postgres_addr}");
-
-    let listener = TcpListener::bind(listen_addr).await?;
-
-    loop {
-        match listener.accept().await {
-            Ok((client_stream, client_addr)) => {
-                info!("New proxy connection from: {client_addr}");
-
-                let config = Arc::clone(&config);
-                tokio::spawn(async move {
-                    if let Err(e) = handle_connection_with_timeout(client_stream, config).await {
-                        error!("Proxy connection error from {client_addr}: {e}");
-                    }
-                });
-            }
-            Err(e) => {
-                error!("Failed to accept proxy connection: {e}");
-            }
-        }
-    }
 }
