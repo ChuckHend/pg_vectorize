@@ -76,7 +76,13 @@ pub mod common {
 
             // Check if we've exceeded the timeout
             if start_time.elapsed() >= timeout_duration {
-                panic!("Search request timed out after 10 seconds");
+                Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    format!(
+                        "Search request timed out after {} seconds",
+                        timeout_duration.as_secs()
+                    ),
+                )))?
             }
 
             // Wait before retrying
@@ -143,7 +149,7 @@ pub mod common {
         .expect("unable to update test data");
     }
 
-    pub fn exec_psql(conn_string: &str, sql_content: &str) {
+    pub fn exec_psql(conn_string: &str, sql_content: &str) -> Result<(), String> {
         let output = Command::new("psql")
             .arg(conn_string)
             .arg("-c")
@@ -155,10 +161,12 @@ pub mod common {
                 "failed to execute SQL: {}",
                 String::from_utf8_lossy(&output.stderr)
             );
-            panic!(
+            Err(format!(
                 "failed to execute SQL: {}",
                 String::from_utf8_lossy(&output.stderr)
-            );
+            ))
+        } else {
+            Ok(())
         }
     }
 }

@@ -8,19 +8,12 @@ use ollama_rs::{
     generation::completion::request::GenerationRequest,
     generation::embeddings::request::{EmbeddingsInput, GenerateEmbeddingsRequest},
 };
-use serde::{Deserialize, Serialize};
 use url::Url;
 
 pub const OLLAMA_BASE_URL: &str = "http://localhost:3001";
 
 pub struct OllamaProvider {
     pub instance: Ollama,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct ModelInfo {
-    embedding_dimension: u32,
-    max_seq_len: u32,
 }
 
 impl OllamaProvider {

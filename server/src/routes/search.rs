@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use utoipa::ToSchema;
 use uuid::Uuid;
-use vectorize_core::query;
+use vectorize_core::query::{self, FilterValue};
 use vectorize_core::transformers::providers::prepare_generic_embedding_request;
 use vectorize_core::transformers::types::Inputs;
 use vectorize_core::types::VectorizeJob;
@@ -27,7 +27,7 @@ pub struct SearchRequest {
     #[serde(default = "default_fts_wt")]
     pub fts_wt: f32,
     #[serde(flatten, default)]
-    pub filters: BTreeMap<String, query::FilterValue>,
+    pub filters: BTreeMap<String, FilterValue>,
 }
 
 fn default_semantic_wt() -> f32 {
@@ -84,13 +84,10 @@ pub async fn search(
     // check inputs and filters are valid if they exist and create a SQL string for them
     query::check_input(&payload.job_name)?;
     if !payload.filters.is_empty() {
-        for (key, value) in &payload.filters {
-            // validate key and value
+        for key in payload.filters.keys() {
+            // validate key only (column names should be alphanumeric + underscore)
             query::check_input(key)?;
-            if let query::FilterValue::String(value) = value {
-                // only need to check the value if it is a raw string
-                query::check_input(value)?;
-            }
+            // Note: filter values are validated during deserialization in FilterValue
         }
     }
 
@@ -147,9 +144,14 @@ pub async fn search(
         .bind(&embeddings.embeddings[0])
         .bind(&payload.query);
 
-    // Bind filter values using the same BTreeMap instance used by the query builder
+    // Bind filter values
     for value in payload.filters.values() {
-        prepared_query = value.bind_to_query(prepared_query);
+        prepared_query = match &value.value {
+            query::FilterValueType::String(s) => prepared_query.bind(s),
+            query::FilterValueType::Integer(i) => prepared_query.bind(i),
+            query::FilterValueType::Float(f) => prepared_query.bind(f),
+            query::FilterValueType::Boolean(b) => prepared_query.bind(b),
+        };
     }
 
     let results = prepared_query.fetch_all(&app_state.db_pool).await?;

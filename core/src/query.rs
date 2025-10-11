@@ -10,54 +10,174 @@ use tiktoken_rs::cl100k_base;
 pub const VECTORIZE_SCHEMA: &str = "vectorize";
 static TRIGGER_FN_PREFIX: &str = "vectorize.handle_update_";
 
-#[derive(Serialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum FilterValue {
+/// Filter operators supported by the search API
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum FilterOperator {
+    /// Equal to (=)
+    Equal,
+    /// Greater than (>)
+    GreaterThan,
+    /// Greater than or equal (>=)
+    GreaterThanOrEqual,
+    /// Less than (<)
+    LessThan,
+    /// Less than or equal (<=)
+    LessThanOrEqual,
+}
+
+impl FilterOperator {
+    /// Convert operator to SQL operator string
+    pub fn to_sql(&self) -> &'static str {
+        match self {
+            FilterOperator::Equal => "=",
+            FilterOperator::GreaterThan => ">",
+            FilterOperator::GreaterThanOrEqual => ">=",
+            FilterOperator::LessThan => "<",
+            FilterOperator::LessThanOrEqual => "<=",
+        }
+    }
+}
+
+/// A filter value with an operator
+#[derive(Debug, Clone, Serialize)]
+pub struct FilterValue {
+    pub operator: FilterOperator,
+    pub value: FilterValueType,
+}
+
+/// The actual value stored in a filter
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub enum FilterValueType {
     String(String),
     Integer(i64),
     Float(f64),
     Boolean(bool),
 }
 
+impl FilterValueType {
+    /// Get the value as a string for SQL binding (TEST-ONLY - use parameterized queries in production)
+    #[cfg(test)]
+    pub fn as_sql_value(&self) -> String {
+        match self {
+            FilterValueType::String(s) => s.clone(),
+            FilterValueType::Integer(i) => i.to_string(),
+            FilterValueType::Float(f) => f.to_string(),
+            FilterValueType::Boolean(b) => b.to_string(),
+        }
+    }
+
+    /// Get the value for parameterized query binding
+    /// Returns the value as a type that can be used with sqlx query parameters
+    pub fn as_bind_value(&self) -> Box<dyn std::any::Any + Send> {
+        match self {
+            FilterValueType::String(s) => Box::new(s.clone()),
+            FilterValueType::Integer(i) => Box::new(*i),
+            FilterValueType::Float(f) => Box::new(*f),
+            FilterValueType::Boolean(b) => Box::new(*b),
+        }
+    }
+}
+
+/// Custom deserializer for FilterValue that parses operator.value format
 impl<'de> serde::Deserialize<'de> for FilterValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let s = String::deserialize(deserializer)?;
+        use serde::de::{self, Visitor};
+        use std::fmt;
 
-        // Try to parse as boolean first
-        if let Ok(b) = s.parse::<bool>() {
-            return Ok(FilterValue::Boolean(b));
+        struct FilterValueVisitor;
+
+        impl<'de> Visitor<'de> for FilterValueVisitor {
+            type Value = FilterValue;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string in format 'operator.value' or just 'value'")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<FilterValue, E>
+            where
+                E: de::Error,
+            {
+                if let Some(dot_pos) = value.find('.') {
+                    let operator_str = &value[..dot_pos];
+                    let val = &value[dot_pos + 1..];
+
+                    let operator = match operator_str {
+                        "eq" => FilterOperator::Equal,
+                        "gt" => FilterOperator::GreaterThan,
+                        "gte" => FilterOperator::GreaterThanOrEqual,
+                        "lt" => FilterOperator::LessThan,
+                        "lte" => FilterOperator::LessThanOrEqual,
+                        _ => {
+                            return Err(de::Error::custom(format!(
+                                "Unknown operator: {}",
+                                operator_str
+                            )));
+                        }
+                    };
+
+                    // Parse the value based on the operator
+                    let parsed_value = match operator {
+                        FilterOperator::Equal => {
+                            // For equality, try to parse as boolean first, then number, fallback to string
+                            if let Ok(bool_val) = val.parse::<bool>() {
+                                FilterValueType::Boolean(bool_val)
+                            } else if let Ok(int_val) = val.parse::<i64>() {
+                                FilterValueType::Integer(int_val)
+                            } else if let Ok(float_val) = val.parse::<f64>() {
+                                FilterValueType::Float(float_val)
+                            } else {
+                                // No validation needed with parameterized queries
+                                FilterValueType::String(val.to_string())
+                            }
+                        }
+                        FilterOperator::GreaterThan
+                        | FilterOperator::GreaterThanOrEqual
+                        | FilterOperator::LessThan
+                        | FilterOperator::LessThanOrEqual => {
+                            // For comparison operators, require numeric values
+                            if let Ok(int_val) = val.parse::<i64>() {
+                                FilterValueType::Integer(int_val)
+                            } else if let Ok(float_val) = val.parse::<f64>() {
+                                FilterValueType::Float(float_val)
+                            } else {
+                                return Err(de::Error::custom(format!(
+                                    "Comparison operators (gt, gte, lt, lte) require numeric values, got: '{}'",
+                                    val
+                                )));
+                            }
+                        }
+                    };
+
+                    Ok(FilterValue {
+                        operator,
+                        value: parsed_value,
+                    })
+                } else {
+                    // Default to equality if no operator specified
+                    // Try to parse as boolean first, then number, fallback to string
+                    let parsed_value = if let Ok(bool_val) = value.parse::<bool>() {
+                        FilterValueType::Boolean(bool_val)
+                    } else if let Ok(int_val) = value.parse::<i64>() {
+                        FilterValueType::Integer(int_val)
+                    } else if let Ok(float_val) = value.parse::<f64>() {
+                        FilterValueType::Float(float_val)
+                    } else {
+                        // No validation needed with parameterized queries
+                        FilterValueType::String(value.to_string())
+                    };
+
+                    Ok(FilterValue {
+                        operator: FilterOperator::Equal,
+                        value: parsed_value,
+                    })
+                }
+            }
         }
 
-        // Try to parse as integer
-        if let Ok(i) = s.parse::<i64>() {
-            return Ok(FilterValue::Integer(i));
-        }
-
-        // Try to parse as float
-        if let Ok(f) = s.parse::<f64>() {
-            return Ok(FilterValue::Float(f));
-        }
-
-        // Fall back to string
-
-        Ok(FilterValue::String(s))
-    }
-}
-
-impl FilterValue {
-    pub fn bind_to_query<'q>(
-        &'q self,
-        query: sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments>,
-    ) -> sqlx::query::Query<'q, sqlx::Postgres, sqlx::postgres::PgArguments> {
-        match self {
-            FilterValue::String(s) => query.bind(s),
-            FilterValue::Integer(i) => query.bind(*i),
-            FilterValue::Float(f) => query.bind(*f),
-            FilterValue::Boolean(b) => query.bind(*b),
-        }
+        deserializer.deserialize_str(FilterValueVisitor)
     }
 }
 
@@ -505,7 +625,7 @@ pub fn join_table_cosine_similarity(
     join_key: &str,
     return_columns: &[String],
     num_results: i32,
-    where_clause: Option<String>,
+    filters: &BTreeMap<String, FilterValue>,
 ) -> String {
     let cols = &return_columns
         .iter()
@@ -513,11 +633,15 @@ pub fn join_table_cosine_similarity(
         .collect::<Vec<_>>()
         .join(",");
 
-    let where_str = if let Some(w) = where_clause {
-        prepare_filter(&w, join_key)
-    } else {
-        "".to_string()
-    };
+    let mut bind_value_counter: i16 = 2; // Start at $2 since $1 is the vector
+    let mut where_filter = "WHERE 1=1".to_string();
+    for (column, filter_value) in filters.iter() {
+        let operator = filter_value.operator.to_sql();
+        let filt = format!(" AND t0.\"{column}\" {operator} ${bind_value_counter}");
+        where_filter.push_str(&filt);
+        bind_value_counter += 1;
+    }
+
     let inner_query = format!(
         "
     SELECT
@@ -537,18 +661,12 @@ pub fn join_table_cosine_similarity(
                 {inner_query}
             ) t1
         INNER JOIN {schema}.{table} t0 on t0.{join_key} = t1.{join_key}
-        {where_str}
+        {where_filter}
     ) t
     ORDER BY t.similarity_score DESC
     LIMIT {num_results};
     "
     )
-}
-
-// transform user's where_sql into the format search query expects
-fn prepare_filter(filter: &str, pkey: &str) -> String {
-    let wc = filter.replace(pkey, &format!("t0.{pkey}"));
-    format!("AND {wc}")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -573,8 +691,9 @@ pub fn hybrid_search_query(
 
     let mut bind_value_counter: i16 = 3;
     let mut where_filter = "WHERE 1=1".to_string();
-    for column in filters.keys() {
-        let filt = format!(" AND t0.\"{column}\" = ${bind_value_counter}");
+    for (column, filter_value) in filters.iter() {
+        let operator = filter_value.operator.to_sql();
+        let filt = format!(" AND t0.\"{column}\" {operator} ${bind_value_counter}");
         where_filter.push_str(&filt);
         bind_value_counter += 1;
     }
@@ -643,6 +762,7 @@ pub fn hybrid_search_query(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json;
 
     #[test]
     fn test_create_update_trigger_single() {
@@ -674,5 +794,616 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
             .to_string();
         let result = create_event_trigger(job_name, "myschema", table_name, "INSERT");
         assert_eq!(expected, result);
+    }
+
+    // ===== FilterValue Deserialization Tests =====
+
+    #[test]
+    fn test_filter_value_deserialize_equality_string() {
+        let json = "\"eq.hello\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "hello");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_equality_integer() {
+        let json = "\"eq.42\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "42");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_equality_float() {
+        let json = "\"eq.3.14\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "3.14");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_greater_than() {
+        let json = "\"gt.100\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::GreaterThan);
+        assert_eq!(filter.value.as_sql_value(), "100");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_greater_than_or_equal() {
+        let json = "\"gte.50.5\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::GreaterThanOrEqual);
+        assert_eq!(filter.value.as_sql_value(), "50.5");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_less_than() {
+        let json = "\"lt.25\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::LessThan);
+        assert_eq!(filter.value.as_sql_value(), "25");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_less_than_or_equal() {
+        let json = "\"lte.10.0\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::LessThanOrEqual);
+        assert_eq!(filter.value.as_sql_value(), "10");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_default_equality() {
+        let json = "\"hello\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "hello");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_default_equality_numeric() {
+        let json = "\"42\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "42");
+    }
+
+    // ===== Edge Case Tests =====
+
+    #[test]
+    fn test_filter_value_deserialize_empty_string() {
+        let json = "\"eq.\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_zero_values() {
+        let json_int = "\"eq.0\"";
+        let filter_int: FilterValue = serde_json::from_str(json_int).unwrap();
+        assert_eq!(filter_int.operator, FilterOperator::Equal);
+        assert_eq!(filter_int.value.as_sql_value(), "0");
+
+        let json_float = "\"eq.0.0\"";
+        let filter_float: FilterValue = serde_json::from_str(json_float).unwrap();
+        assert_eq!(filter_float.operator, FilterOperator::Equal);
+        assert_eq!(filter_float.value.as_sql_value(), "0");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_negative_values() {
+        let json_int = "\"eq.-42\"";
+        let filter_int: FilterValue = serde_json::from_str(json_int).unwrap();
+        assert_eq!(filter_int.operator, FilterOperator::Equal);
+        assert_eq!(filter_int.value.as_sql_value(), "-42");
+
+        let json_float = "\"eq.-3.14\"";
+        let filter_float: FilterValue = serde_json::from_str(json_float).unwrap();
+        assert_eq!(filter_float.operator, FilterOperator::Equal);
+        assert_eq!(filter_float.value.as_sql_value(), "-3.14");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_special_characters() {
+        let json = "\"eq.hello-world_123\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "hello-world_123");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_unicode_characters() {
+        let json = "\"eq.测试\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "测试");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_whitespace_values() {
+        let json = "\"eq. hello \"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), " hello ");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_scientific_notation() {
+        let json = "\"eq.1e5\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "100000");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_large_numbers() {
+        let json = "\"eq.9223372036854775807\""; // i64::MAX
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "9223372036854775807");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_precision_float() {
+        let json = "\"eq.3.141592653589793\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "3.141592653589793");
+    }
+
+    // ===== Error Handling Tests =====
+
+    #[test]
+    fn test_filter_value_deserialize_invalid_operator() {
+        let json = "\"invalid.42\"";
+        let result: Result<FilterValue, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Should fail for invalid operator");
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("Unknown operator"));
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_comparison_with_string() {
+        // Test that comparison operators fail with non-numeric values
+        let test_cases = vec![
+            ("gt", "hello"),
+            ("gte", "world"),
+            ("lt", "test"),
+            ("lte", "string"),
+        ];
+
+        for (op, value) in test_cases {
+            let json = format!("\"{}.{}\"", op, value);
+            let result: Result<FilterValue, _> = serde_json::from_str(&json);
+            assert!(
+                result.is_err(),
+                "Should fail for non-numeric value with {} operator",
+                op
+            );
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains("require numeric values"));
+        }
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_malformed_json() {
+        // Test various malformed JSON inputs
+        let malformed_inputs = vec![
+            ("\"eq.42", false),        // Missing closing quote
+            ("eq.42\"", false),        // Missing opening quote
+            ("\"eq.42\"", true),       // This should work
+            ("\"eq.42.extra\"", true), // Extra dot should work as string
+            ("\"eq.\"", true),         // Empty value should work
+            ("\".42\"", false),        // Missing operator should fail
+            ("\"eq\"", true),          // Missing dot and value should work as string
+        ];
+
+        for (input, should_succeed) in malformed_inputs {
+            let result: Result<FilterValue, _> = serde_json::from_str(input);
+            if should_succeed {
+                assert!(result.is_ok(), "Should succeed for input: {}", input);
+            } else {
+                assert!(
+                    result.is_err(),
+                    "Should fail for malformed input: {}",
+                    input
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_empty_input() {
+        let json = "\"\"";
+        let result: Result<FilterValue, _> = serde_json::from_str(json);
+        // Empty input should succeed and default to equality with empty string
+        assert!(result.is_ok(), "Empty input should succeed");
+        let filter = result.unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_just_dot() {
+        let json = "\".\"";
+        let result: Result<FilterValue, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "Should fail for input with just a dot");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_multiple_dots() {
+        let json = "\"eq.42.extra\"";
+        let result: Result<FilterValue, _> = serde_json::from_str(json);
+        // Multiple dots should succeed and treat the whole thing as a string
+        assert!(
+            result.is_ok(),
+            "Should succeed for input with multiple dots"
+        );
+        let filter = result.unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value.as_sql_value(), "42.extra");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_case_sensitive_operators() {
+        // Test that operators are case sensitive
+        let case_variations = vec!["EQ.42", "GT.42", "GTE.42", "LT.42", "LTE.42"];
+
+        for input in case_variations {
+            let json = format!("\"{}\"", input);
+            let result: Result<FilterValue, _> = serde_json::from_str(&json);
+            assert!(
+                result.is_err(),
+                "Should fail for uppercase operator: {}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_whitespace_in_operator() {
+        // Test operators with whitespace - these actually succeed as they're treated as strings
+        let whitespace_inputs = vec![
+            ("\" eq.42\"", false), // Leading space - fails
+            ("\"eq .42\"", false), // Space before dot - fails
+            ("\"eq. 42\"", true),  // Space after dot - succeeds as string
+            ("\"eq.42 \"", true),  // Trailing space - succeeds as string
+        ];
+
+        for (input, should_succeed) in whitespace_inputs {
+            let result: Result<FilterValue, _> = serde_json::from_str(input);
+            if should_succeed {
+                assert!(result.is_ok(), "Should succeed for input: {}", input);
+            } else {
+                assert!(result.is_err(), "Should fail for input: {}", input);
+            }
+        }
+    }
+
+    // ===== Numeric Parsing Edge Cases =====
+
+    #[test]
+    fn test_filter_value_deserialize_numeric_boundaries() {
+        // Test integer boundaries
+        let json_max_i64 = "\"eq.9223372036854775807\""; // i64::MAX
+        let filter_max: FilterValue = serde_json::from_str(json_max_i64).unwrap();
+        assert_eq!(filter_max.value.as_sql_value(), "9223372036854775807");
+
+        let json_min_i64 = "\"eq.-9223372036854775808\""; // i64::MIN
+        let filter_min: FilterValue = serde_json::from_str(json_min_i64).unwrap();
+        assert_eq!(filter_min.value.as_sql_value(), "-9223372036854775808");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_float_precision() {
+        // Test various float precision cases
+        let test_cases = vec![
+            ("0.0", "0"),
+            ("0.1", "0.1"),
+            ("0.01", "0.01"),
+            ("0.001", "0.001"),
+            ("1.0", "1"),
+            ("1.1", "1.1"),
+            ("1.11", "1.11"),
+            ("1.111", "1.111"),
+        ];
+
+        for (input, expected) in test_cases {
+            let json = format!("\"eq.{}\"", input);
+            let filter: FilterValue = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                filter.value.as_sql_value(),
+                expected,
+                "Failed for input: {}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_scientific_notation_edge_cases() {
+        // Test scientific notation edge cases
+        let test_cases = vec![
+            ("1e0", "1"),
+            ("1e1", "10"),
+            ("1e-1", "0.1"),
+            ("1e-10", "0.0000000001"),
+            ("1e10", "10000000000"),
+            ("1.5e2", "150"),
+            ("1.5e-2", "0.015"),
+        ];
+
+        for (input, expected) in test_cases {
+            let json = format!("\"eq.{}\"", input);
+            let filter: FilterValue = serde_json::from_str(&json).unwrap();
+            assert_eq!(
+                filter.value.as_sql_value(),
+                expected,
+                "Failed for input: {}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_hex_numbers() {
+        // Test that hex numbers are treated as strings (not parsed as integers)
+        let json = "\"eq.0xFF\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.value.as_sql_value(), "0xFF");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_octal_numbers() {
+        // Test that octal numbers are parsed as integers
+        let json = "\"eq.0777\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.value.as_sql_value(), "777");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_binary_numbers() {
+        // Test that binary numbers are treated as strings
+        let json = "\"eq.0b1010\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.value.as_sql_value(), "0b1010");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_numeric_with_leading_zeros() {
+        // Test numbers with leading zeros
+        let json = "\"eq.007\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.value.as_sql_value(), "7");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_numeric_with_trailing_zeros() {
+        // Test numbers with trailing zeros
+        let json = "\"eq.42.000\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.value.as_sql_value(), "42");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_numeric_with_plus_sign() {
+        // Test numbers with explicit plus sign
+        let json = "\"+42\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.value.as_sql_value(), "42");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_numeric_with_plus_sign_float() {
+        // Test floats with explicit plus sign (should work as default equality)
+        let json = "\"+3.14\"";
+        let result: Result<FilterValue, _> = serde_json::from_str(json);
+        // This should fail because "+3" is not a valid operator
+        assert!(
+            result.is_err(),
+            "Should fail for input with plus sign as operator"
+        );
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_numeric_infinity() {
+        // Test infinity values (should be parsed as float infinity)
+        let json = "\"eq.infinity\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.value.as_sql_value(), "inf");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_numeric_nan() {
+        // Test NaN values (should be parsed as float NaN)
+        let json = "\"eq.nan\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        // NaN comparison requires special handling
+        match filter.value {
+            FilterValueType::Float(f) => assert!(f.is_nan(), "Expected NaN"),
+            _ => panic!("Expected Float(NaN)"),
+        }
+        assert_eq!(filter.value.as_sql_value(), "NaN");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_numeric_very_small() {
+        // Test very small numbers
+        let json = "\"eq.0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        // Very small numbers get parsed as floats and converted to "0" when using to_string()
+        assert_eq!(filter.value.as_sql_value(), "0");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_numeric_very_large() {
+        // Test very large numbers (using f64::MAX as a reasonable upper bound)
+        let json = "\"eq.1.7976931348623157e308\""; // f64::MAX
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        // Very large numbers get parsed as floats and converted to a long decimal string when using to_string()
+        assert_eq!(
+            filter.value.as_sql_value(),
+            "179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+        );
+    }
+
+    // ===== Boolean Filter Value Tests =====
+
+    #[test]
+    fn test_filter_value_deserialize_boolean_true() {
+        let json = "\"eq.true\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value, FilterValueType::Boolean(true));
+        assert_eq!(filter.value.as_sql_value(), "true");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_boolean_false() {
+        let json = "\"eq.false\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value, FilterValueType::Boolean(false));
+        assert_eq!(filter.value.as_sql_value(), "false");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_boolean_default_true() {
+        let json = "\"true\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value, FilterValueType::Boolean(true));
+        assert_eq!(filter.value.as_sql_value(), "true");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_boolean_default_false() {
+        let json = "\"false\"";
+        let filter: FilterValue = serde_json::from_str(json).unwrap();
+        assert_eq!(filter.operator, FilterOperator::Equal);
+        assert_eq!(filter.value, FilterValueType::Boolean(false));
+        assert_eq!(filter.value.as_sql_value(), "false");
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_boolean_case_sensitive() {
+        // Test that boolean parsing is case sensitive - uppercase values become strings
+        let test_cases = vec![
+            ("\"eq.True\"", FilterValueType::String("True".to_string())),
+            ("\"eq.False\"", FilterValueType::String("False".to_string())),
+            ("\"eq.TRUE\"", FilterValueType::String("TRUE".to_string())),
+            ("\"eq.FALSE\"", FilterValueType::String("FALSE".to_string())),
+            ("\"eq.true\"", FilterValueType::Boolean(true)),
+            ("\"eq.false\"", FilterValueType::Boolean(false)),
+        ];
+
+        for (input, expected_value) in test_cases {
+            let filter: FilterValue = serde_json::from_str(input).unwrap();
+            assert_eq!(filter.value, expected_value);
+        }
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_boolean_with_whitespace() {
+        // Test boolean parsing with whitespace
+        let test_cases = vec![
+            ("\"eq. true\"", true),  // Space before true - should succeed as string
+            ("\"eq.false \"", true), // Space after false - should succeed as string
+            ("\"eq. true \"", true), // Spaces around true - should succeed as string
+        ];
+
+        for (input, should_succeed) in test_cases {
+            let result: Result<FilterValue, _> = serde_json::from_str(input);
+            if should_succeed {
+                assert!(result.is_ok(), "Should succeed for input: {}", input);
+                let filter = result.unwrap();
+                // With whitespace, it should be parsed as a string, not boolean
+                assert!(matches!(filter.value, FilterValueType::String(_)));
+            } else {
+                assert!(result.is_err(), "Should fail for input: {}", input);
+            }
+        }
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_boolean_vs_string() {
+        // Test that "true" and "false" strings are not parsed as booleans
+        let test_cases = vec![
+            (
+                "\"eq.true_string\"",
+                FilterValueType::String("true_string".to_string()),
+            ),
+            (
+                "\"eq.false_string\"",
+                FilterValueType::String("false_string".to_string()),
+            ),
+            (
+                "\"eq.true123\"",
+                FilterValueType::String("true123".to_string()),
+            ),
+            (
+                "\"eq.false456\"",
+                FilterValueType::String("false456".to_string()),
+            ),
+        ];
+
+        for (input, expected_value) in test_cases {
+            let filter: FilterValue = serde_json::from_str(input).unwrap();
+            assert_eq!(filter.value, expected_value);
+        }
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_boolean_vs_numeric() {
+        // Test that numeric values are still parsed as numbers, not booleans
+        let test_cases = vec![
+            ("\"eq.1\"", FilterValueType::Integer(1)),
+            ("\"eq.0\"", FilterValueType::Integer(0)),
+            ("\"eq.1.0\"", FilterValueType::Float(1.0)),
+            ("\"eq.0.0\"", FilterValueType::Float(0.0)),
+        ];
+
+        for (input, expected_value) in test_cases {
+            let filter: FilterValue = serde_json::from_str(input).unwrap();
+            assert_eq!(filter.value, expected_value);
+        }
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_boolean_comparison_operators() {
+        // Test that comparison operators with boolean values fail (as they should require numeric values)
+        let test_cases = vec!["gt.true", "gte.false", "lt.true", "lte.false"];
+
+        for input in test_cases {
+            let json = format!("\"{}\"", input);
+            let result: Result<FilterValue, _> = serde_json::from_str(&json);
+            assert!(
+                result.is_err(),
+                "Should fail for boolean value with comparison operator: {}",
+                input
+            );
+            let error = result.unwrap_err();
+            assert!(error.to_string().contains("require numeric values"));
+        }
+    }
+
+    #[test]
+    fn test_filter_value_deserialize_boolean_edge_cases() {
+        // Test edge cases for boolean parsing
+        let test_cases = vec![
+            ("\"eq.true\"", FilterValueType::Boolean(true)),
+            ("\"eq.false\"", FilterValueType::Boolean(false)),
+            ("\"true\"", FilterValueType::Boolean(true)),
+            ("\"false\"", FilterValueType::Boolean(false)),
+        ];
+
+        for (input, expected_value) in test_cases {
+            let filter: FilterValue = serde_json::from_str(input).unwrap();
+            assert_eq!(filter.value, expected_value);
+            assert_eq!(filter.operator, FilterOperator::Equal);
+        }
     }
 }

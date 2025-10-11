@@ -107,7 +107,11 @@ async fn test_search_filters() {
     let test_num = rng.random_range(1..100000);
     let cfg = vectorize_core::config::Config::from_env();
     let sql = std::fs::read_to_string("sql/example.sql").unwrap();
-    common::exec_psql(&cfg.database_url, &sql);
+    if let Err(e) = common::exec_psql(&cfg.database_url, &sql) {
+        // installation of example.sql could fail due to race conditions
+        // so we can continue
+        log::warn!("failed to execute example.sql: {}", e);
+    }
 
     let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
     // test table
@@ -149,8 +153,8 @@ async fn test_search_filters() {
         resp.status()
     );
 
-    // filter a query by product_category
-    let params = format!("job_name={job_name}&query=pen&product_category=electronics",);
+    // filter a query by product_category (using eq operator)
+    let params = format!("job_name={job_name}&query=pen&product_category=eq.electronics",);
     let search_results = common::search_with_retry(&params, 9).await.unwrap();
 
     assert_eq!(search_results.len(), 9);
@@ -159,8 +163,7 @@ async fn test_search_filters() {
         assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
     }
 
-    // filter by price
-    let params = format!("job_name={job_name}&query=electronics&price=25");
+    let params = format!("job_name={job_name}&query=electronics&price=eq.25");
     let search_results = common::search_with_retry(&params, 2).await.unwrap();
     assert_eq!(search_results.len(), 2);
     assert_eq!(
@@ -171,6 +174,171 @@ async fn test_search_filters() {
         search_results[1]["product_name"].as_str().unwrap(),
         "Alarm Clock"
     );
+
+    // test greater than or equal operator
+    let params = format!("job_name={job_name}&query=electronics&price=gte.25&limit=5");
+    let search_results = common::search_with_retry(&params, 5).await.unwrap();
+    assert_eq!(search_results.len(), 5);
+
+    // test backward compatibility - no operator should default to equality
+    let params = format!("job_name={job_name}&query=pen&product_category=electronics",);
+    let search_results = common::search_with_retry(&params, 9).await.unwrap();
+    assert_eq!(search_results.len(), 9);
+    for result in search_results {
+        assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
+    }
+
+    // test multiple filters - category first, then price
+    let params = format!(
+        "job_name={job_name}&query=electronics&product_category=eq.electronics&price=gte.25"
+    );
+    let search_results_category_first = common::search_with_retry(&params, 5).await.unwrap();
+    assert_eq!(search_results_category_first.len(), 5);
+    for result in &search_results_category_first {
+        assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
+        assert!(result["price"].as_f64().unwrap() >= 25.0);
+    }
+
+    // test multiple filters - price first, then category (different order)
+    let params = format!(
+        "job_name={job_name}&query=electronics&price=gte.25&product_category=eq.electronics"
+    );
+    let search_results_price_first = common::search_with_retry(&params, 5).await.unwrap();
+    assert_eq!(search_results_price_first.len(), 5);
+    for result in &search_results_price_first {
+        assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
+        assert!(result["price"].as_f64().unwrap() >= 25.0);
+    }
+
+    // verify that both filter orders produce the same results
+    assert_eq!(
+        search_results_category_first.len(),
+        search_results_price_first.len()
+    );
+    // Sort both results by product_id to ensure consistent comparison
+    let mut category_first_sorted = search_results_category_first.clone();
+    let mut price_first_sorted = search_results_price_first.clone();
+    category_first_sorted.sort_by(|a, b| {
+        a["product_id"]
+            .as_i64()
+            .unwrap()
+            .cmp(&b["product_id"].as_i64().unwrap())
+    });
+    price_first_sorted.sort_by(|a, b| {
+        a["product_id"]
+            .as_i64()
+            .unwrap()
+            .cmp(&b["product_id"].as_i64().unwrap())
+    });
+
+    for (i, (result1, result2)) in category_first_sorted
+        .iter()
+        .zip(price_first_sorted.iter())
+        .enumerate()
+    {
+        assert_eq!(
+            result1["product_id"], result2["product_id"],
+            "Product IDs should match at index {}",
+            i
+        );
+        assert_eq!(
+            result1["product_name"], result2["product_name"],
+            "Product names should match at index {}",
+            i
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_search_filter_operators() {
+    let mut rng = rand::rng();
+    let test_num = rng.random_range(1..100000);
+    let cfg = vectorize_core::config::Config::from_env();
+    // install raw SQL
+    let sql = std::fs::read_to_string("sql/example.sql").unwrap();
+    if let Err(e) = common::exec_psql(&cfg.database_url, &sql) {
+        // installation of example.sql could fail due to race conditions
+        // so we can continue
+        log::warn!("failed to execute example.sql: {}", e);
+    }
+
+    let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
+    // test table
+    let table = format!("test_filter_ops_{test_num}");
+    let drop_sql = format!("DROP TABLE IF EXISTS public.{table};");
+    let create_sql =
+        format!("CREATE TABLE public.{table} (LIKE public.my_products INCLUDING ALL);");
+    let insert_sql = format!("INSERT INTO public.{table} SELECT * FROM public.my_products;");
+
+    sqlx::query(&drop_sql).execute(&pool).await.unwrap();
+    sqlx::query(&create_sql).execute(&pool).await.unwrap();
+    sqlx::query(&insert_sql).execute(&pool).await.unwrap();
+
+    // initialize search job
+    let job_name = format!("test_filter_ops_{test_num}");
+    let payload = json!({
+        "job_name": job_name,
+        "src_table": table,
+        "src_schema": "public",
+        "src_columns": ["description"],
+        "primary_key": "product_id",
+        "update_time_col": "updated_at",
+        "model": "sentence-transformers/all-MiniLM-L6-v2"
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("http://localhost:8080/api/v1/table")
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "Response status: {:?}",
+        resp.status()
+    );
+
+    // Test different operators
+    // Greater than
+    let params = format!("job_name={job_name}&query=electronics&price=gt.20&limit=100");
+    let search_results = common::search_with_retry(&params, 14).await.unwrap();
+    assert_eq!(search_results.len(), 14);
+
+    // Less than or equal
+    let params = format!("job_name={job_name}&query=electronics&price=lte.25&limit=100");
+    let search_results = common::search_with_retry(&params, 30).await.unwrap();
+    assert_eq!(search_results.len(), 30);
+
+    // Test float values
+    let params = format!("job_name={job_name}&query=electronics&price=gte.24.5&limit=1000");
+    let search_results = common::search_with_retry(&params, 12).await.unwrap();
+    assert_eq!(search_results.len(), 12);
+
+    // Test invalid operator (should return error)
+    let params = format!("job_name={job_name}&query=electronics&price=invalid.25");
+    let response = client
+        .get(&format!("http://localhost:8080/api/v1/search?{}", params))
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    // Should return an error for invalid operator
+    assert!(response.status().is_client_error() || response.status().is_server_error());
+
+    // Test non-numeric value with comparison operator (should return error)
+    let params = format!("job_name={job_name}&query=electronics&price=gt.abc");
+    let response = client
+        .get(&format!("http://localhost:8080/api/v1/search?{}", params))
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    // Should return an error for non-numeric value with comparison operator
+    assert!(response.status().is_client_error() || response.status().is_server_error());
 }
 
 /// proxy is an incomplete feature

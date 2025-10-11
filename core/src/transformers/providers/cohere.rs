@@ -49,14 +49,6 @@ impl From<GenericEmbeddingRequest> for CohereEmbeddingBody {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct CohereEmbeddingResponse {
-    model: String,
-    texts: Vec<String>,
-    input_type: String,
-    truncate: String,
-}
-
 impl CohereProvider {
     pub fn new(url: Option<String>, api_key: Option<String>) -> Result<Self, VectorizeError> {
         let final_url = match url {
