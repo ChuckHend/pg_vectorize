@@ -25,7 +25,7 @@ pub fn batch_texts(
         return TableIterator::new(vec![record_ids].into_iter().map(|arr| (arr,)));
     }
 
-    let num_batches = (total_records + batch_size - 1) / batch_size;
+    let num_batches = total_records.div_ceil(batch_size);
 
     let mut batches = Vec::with_capacity(num_batches);
 

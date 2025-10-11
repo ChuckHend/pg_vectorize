@@ -176,40 +176,6 @@ fn encode(
     Ok(transform(input, &model, api_key).remove(0))
 }
 
-#[allow(clippy::too_many_arguments)]
-#[deprecated(since = "0.22.0", note = "Please use vectorize.table() instead")]
-#[pg_extern]
-fn init_rag(
-    agent_name: &str,
-    table_name: &str,
-    unique_record_id: &str,
-    // column that have data we want to be able to chat with
-    column: &str,
-    schema: default!(&str, "'public'"),
-    index_dist_type: default!(types::IndexDist, "'pgv_hnsw_cosine'"),
-    // transformer model to use in vector-search
-    transformer: default!(&str, "'sentence-transformers/all-MiniLM-L6-v2'"),
-    table_method: default!(types::TableMethod, "'join'"),
-    schedule: default!(&str, "'* * * * *'"),
-) -> Result<String> {
-    pgrx::warning!("DEPRECATED: vectorize.init_rag() will be removed in a future version. Please use vectorize.table() instead.");
-    // chat only supports single columns transform
-    let columns = vec![column.to_string()];
-    let transformer_model = Model::new(transformer)?;
-    init_table(
-        agent_name,
-        schema,
-        table_name,
-        columns,
-        unique_record_id,
-        None,
-        index_dist_type.into(),
-        &transformer_model,
-        table_method.into(),
-        schedule,
-    )
-}
-
 /// creates a table indexed with embeddings for chat completion workloads
 #[pg_extern]
 fn rag(
