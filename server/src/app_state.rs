@@ -75,7 +75,6 @@ impl AppState {
         })
     }
 
-    #[allow(dead_code)]
     async fn start_cache_sync_listener_task(
         cache_pool: &sqlx::PgPool,
         job_cache: &Arc<RwLock<HashMap<String, VectorizeJob>>>,

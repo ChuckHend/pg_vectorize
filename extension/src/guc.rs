@@ -250,7 +250,6 @@ pub fn get_guc(guc: VectorizeGuc) -> Option<String> {
     }
 }
 
-#[allow(dead_code)]
 fn handle_cstr(cstr: &CStr) -> Result<String> {
     if let Ok(s) = cstr.to_str() {
         Ok(s.to_owned())
