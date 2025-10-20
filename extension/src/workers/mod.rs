@@ -92,7 +92,7 @@ pub async fn execute_job(dbclient: &Pool<Postgres>, msg: Message<JobMessage>) ->
     // Check if the job still exists - it may have been deleted
     let job_meta = match get_vectorize_meta(&msg.message.job_name, dbclient).await {
         Ok(meta) => meta,
-        Err(DatabaseError::SqlxError(sqlx::Error::RowNotFound)) => {
+        Err(DatabaseError::Db(sqlx::Error::RowNotFound)) => {
             warning!(
                 "pg-vectorize: Job '{}' not found - it may have been deleted. Skipping message.",
                 msg.message.job_name
