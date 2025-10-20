@@ -314,6 +314,86 @@ pub async fn scan_job(pool: &PgPool, job_request: &VectorizeJob) -> Result<(), V
     Ok(())
 }
 
+pub async fn cleanup_job(pool: &PgPool, job_name: &str) -> Result<(), VectorizeError> {
+    // First, fetch the job details to get src_schema and src_table
+    let job = crate::db::get_vectorize_job(pool, job_name)
+        .await
+        .map_err(|e| match e {
+            VectorizeError::SqlError(sqlx::Error::RowNotFound) => {
+                VectorizeError::NotFound(format!("Job '{}' not found", job_name))
+            }
+            _ => e,
+        })?;
+
+    log::info!("Cleaning up job: {}", job_name);
+
+    // Delete pending PGMQ messages for this job
+    // We search for messages where the job_name matches
+    let delete_messages_query =
+        format!("DELETE FROM pgmq.vectorize_jobs WHERE message->>'job_name' = $1");
+    match sqlx::query(&delete_messages_query)
+        .bind(job_name)
+        .execute(pool)
+        .await
+    {
+        Ok(result) => {
+            log::info!(
+                "Deleted {} pending PGMQ messages for job: {}",
+                result.rows_affected(),
+                job_name
+            );
+        }
+        Err(e) => {
+            log::warn!("Failed to delete PGMQ messages for job {}: {}", job_name, e);
+            // Continue with cleanup even if PGMQ deletion fails
+        }
+    }
+
+    // Begin transaction for database resource cleanup
+    let mut tx = pool.begin().await?;
+
+    // Generate cleanup SQL statements
+    let cleanup_statements = vec![
+        // Drop triggers first (they depend on the function and table)
+        query::drop_event_trigger(job_name, &job.src_schema, &job.src_table, "INSERT"),
+        query::drop_event_trigger(job_name, &job.src_schema, &job.src_table, "UPDATE"),
+        query::drop_search_tokens_trigger(job_name, &job.src_schema, &job.src_table),
+        // Drop trigger handler function
+        query::drop_trigger_handler(job_name),
+        // Drop view (depends on tables)
+        query::drop_project_view(job_name),
+        // Drop tables (CASCADE will handle indexes)
+        query::drop_embeddings_table(job_name),
+        query::drop_search_tokens_table(job_name),
+        // Delete job record
+        query::delete_job_record(job_name),
+    ];
+
+    // Execute cleanup statements
+    for (idx, statement) in cleanup_statements.iter().enumerate() {
+        match sqlx::query(statement).execute(&mut *tx).await {
+            Ok(_) => {
+                log::debug!("Executed cleanup statement {}: {}", idx + 1, statement);
+            }
+            Err(e) => {
+                log::warn!(
+                    "Warning: cleanup statement {} failed (continuing): {} - Error: {}",
+                    idx + 1,
+                    statement,
+                    e
+                );
+                // Continue with other cleanup steps even if one fails
+            }
+        }
+    }
+
+    // Commit transaction
+    tx.commit().await?;
+
+    log::info!("Successfully cleaned up job: {}", job_name);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

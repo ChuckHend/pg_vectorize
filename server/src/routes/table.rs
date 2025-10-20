@@ -1,6 +1,6 @@
 use crate::app_state::AppState;
 use crate::errors::ServerError;
-use actix_web::{HttpResponse, post, web};
+use actix_web::{HttpResponse, delete, post, web};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -57,5 +57,53 @@ pub async fn table(
     }
 
     let resp = JobResponse { id: job_id };
+    Ok(HttpResponse::Ok().json(resp))
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
+pub struct DeleteJobResponse {
+    pub job_name: String,
+    pub message: String,
+}
+
+#[utoipa::path(
+    context_path = "/api/v1",
+    responses(
+        (
+            status = 200, description = "Successfully deleted vectorize job",
+            body = DeleteJobResponse,
+        ),
+        (
+            status = 404, description = "Job not found",
+        ),
+    ),
+)]
+#[delete("/table/{job_name}")]
+pub async fn delete_table(
+    app_state: web::Data<AppState>,
+    job_name: web::Path<String>,
+) -> Result<HttpResponse, ServerError> {
+    let job_name = job_name.into_inner();
+
+    // Cleanup the job resources
+    init::cleanup_job(&app_state.db_pool, &job_name)
+        .await
+        .map_err(|e| match e {
+            vectorize_core::errors::VectorizeError::NotFound(msg) => {
+                ServerError::NotFoundError(msg)
+            }
+            _ => ServerError::from(e),
+        })?;
+
+    // Remove from cache
+    {
+        let mut job_cache = app_state.job_cache.write().await;
+        job_cache.remove(&job_name);
+    }
+
+    let resp = DeleteJobResponse {
+        job_name: job_name.clone(),
+        message: format!("Successfully deleted job '{}'", job_name),
+    };
     Ok(HttpResponse::Ok().json(resp))
 }

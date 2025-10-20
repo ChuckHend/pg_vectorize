@@ -61,7 +61,29 @@ async fn execute_job(pool: &PgPool, msg: Message<JobMessage>) -> Result<(), Vect
     let bpe = cl100k_base().unwrap();
 
     let job_name = msg.message.job_name.clone();
-    let vectorizejob = db::get_vectorize_job(pool, &job_name).await?;
+    
+    // Check if the job still exists - it may have been deleted
+    let vectorizejob = match db::get_vectorize_job(pool, &job_name).await {
+        Ok(job) => job,
+        Err(VectorizeError::SqlError(sqlx::Error::RowNotFound)) => {
+            log::warn!(
+                "Job '{}' not found - it may have been deleted. Skipping message.",
+                job_name
+            );
+            // Return Ok to allow the message to be deleted from queue
+            return Ok(());
+        }
+        Err(VectorizeError::NotFound(_)) => {
+            log::warn!(
+                "Job '{}' not found - it may have been deleted. Skipping message.",
+                job_name
+            );
+            // Return Ok to allow the message to be deleted from queue
+            return Ok(());
+        }
+        Err(e) => return Err(e),
+    };
+    
     log::debug!("Retrieved vectorize job: {vectorizejob:?}");
     let provider = providers::get_provider(&vectorizejob.model.source, None, None, None)?;
 

@@ -650,3 +650,497 @@ async fn test_health_monitoring() {
 
     println!("Health monitoring test completed successfully");
 }
+
+#[tokio::test]
+async fn test_delete_job() {
+    // Initialize test environment
+    common::init_test_environment().await;
+
+    // Create test table
+    let table = common::create_test_table().await;
+    let job_name = format!("test_delete_job_{table}");
+
+    // Create a vectorize job
+    let payload = json!({
+        "job_name": job_name,
+        "src_table": table,
+        "src_schema": "vectorize_test",
+        "src_columns": ["content"],
+        "primary_key": "id",
+        "update_time_col": "updated_at",
+        "model": "sentence-transformers/all-MiniLM-L6-v2"
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("http://localhost:8080/api/v1/table")
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let response: JobResponse = resp.json().await.expect("Failed to parse response");
+    assert!(!response.id.is_nil(), "Job ID should not be nil");
+
+    // Wait for job to be processed
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // Verify resources were created
+    let cfg = vectorize_core::config::Config::from_env();
+    let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
+
+    // Check embeddings table exists
+    let embeddings_table_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'vectorize' 
+            AND table_name = $1
+        )",
+    )
+    .bind(format!("_embeddings_{}", job_name))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(embeddings_table_exists, "Embeddings table should exist");
+
+    // Check search tokens table exists
+    let tokens_table_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'vectorize' 
+            AND table_name = $1
+        )",
+    )
+    .bind(format!("_search_tokens_{}", job_name))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(tokens_table_exists, "Search tokens table should exist");
+
+    // Check view exists
+    let view_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.views 
+            WHERE table_schema = 'vectorize' 
+            AND table_name = $1
+        )",
+    )
+    .bind(format!("{}_view", job_name))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(view_exists, "View should exist");
+
+    // Check job record exists
+    let job_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM vectorize.job WHERE job_name = $1)")
+            .bind(&job_name)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(job_exists, "Job record should exist");
+
+    // Delete the job
+    let resp = client
+        .delete(&format!("http://localhost:8080/api/v1/table/{}", job_name))
+        .send()
+        .await
+        .expect("Failed to send delete request");
+
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "Delete should return 200 OK"
+    );
+
+    let delete_response: serde_json::Value = resp.json().await.expect("Failed to parse response");
+    assert_eq!(delete_response["job_name"], job_name);
+    assert!(
+        delete_response["message"]
+            .as_str()
+            .unwrap()
+            .contains("Successfully deleted")
+    );
+
+    // Verify all resources were cleaned up
+
+    // Check embeddings table no longer exists
+    let embeddings_table_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'vectorize' 
+            AND table_name = $1
+        )",
+    )
+    .bind(format!("_embeddings_{}", job_name))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        !embeddings_table_exists,
+        "Embeddings table should be deleted"
+    );
+
+    // Check search tokens table no longer exists
+    let tokens_table_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'vectorize' 
+            AND table_name = $1
+        )",
+    )
+    .bind(format!("_search_tokens_{}", job_name))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        !tokens_table_exists,
+        "Search tokens table should be deleted"
+    );
+
+    // Check view no longer exists
+    let view_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.views 
+            WHERE table_schema = 'vectorize' 
+            AND table_name = $1
+        )",
+    )
+    .bind(format!("{}_view", job_name))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!view_exists, "View should be deleted");
+
+    // Check job record no longer exists
+    let job_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM vectorize.job WHERE job_name = $1)")
+            .bind(&job_name)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(!job_exists, "Job record should be deleted");
+
+    // Verify triggers were removed from source table
+    let trigger_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1 FROM information_schema.triggers 
+            WHERE event_object_schema = 'vectorize_test'
+            AND event_object_table = $1
+            AND trigger_name LIKE $2
+        )",
+    )
+    .bind(&table)
+    .bind(format!("%{}%", job_name))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(!trigger_exists, "Triggers should be deleted");
+
+    // Verify trigger handler function was removed
+    let function_exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT 1 FROM pg_proc p
+            JOIN pg_namespace n ON p.pronamespace = n.oid
+            WHERE n.nspname = 'vectorize'
+            AND p.proname = $1
+        )",
+    )
+    .bind(format!("handle_update_{}", job_name))
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        !function_exists,
+        "Trigger handler function should be deleted"
+    );
+
+    println!("Delete job test completed successfully");
+}
+
+#[tokio::test]
+async fn test_delete_nonexistent_job() {
+    // Initialize test environment
+    common::init_test_environment().await;
+
+    let client = reqwest::Client::new();
+    let nonexistent_job = "this_job_does_not_exist_12345";
+
+    // Try to delete a job that doesn't exist
+    let resp = client
+        .delete(&format!(
+            "http://localhost:8080/api/v1/table/{}",
+            nonexistent_job
+        ))
+        .send()
+        .await
+        .expect("Failed to send delete request");
+
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::NOT_FOUND,
+        "Delete of nonexistent job should return 404"
+    );
+
+    let error_response: serde_json::Value = resp.json().await.expect("Failed to parse response");
+    assert!(
+        error_response["error"]
+            .as_str()
+            .unwrap()
+            .contains("not found")
+    );
+
+    println!("Delete nonexistent job test completed successfully");
+}
+
+#[tokio::test]
+async fn test_delete_job_idempotency() {
+    // Initialize test environment
+    common::init_test_environment().await;
+
+    // Create test table
+    let table = common::create_test_table().await;
+    let job_name = format!("test_delete_idempotent_{table}");
+
+    // Create a vectorize job
+    let payload = json!({
+        "job_name": job_name,
+        "src_table": table,
+        "src_schema": "vectorize_test",
+        "src_columns": ["content"],
+        "primary_key": "id",
+        "update_time_col": "updated_at",
+        "model": "sentence-transformers/all-MiniLM-L6-v2"
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("http://localhost:8080/api/v1/table")
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    // Wait for job to be processed
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // Delete the job (first time)
+    let resp = client
+        .delete(&format!("http://localhost:8080/api/v1/table/{}", job_name))
+        .send()
+        .await
+        .expect("Failed to send first delete request");
+
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    // Try to delete the same job again (should return 404)
+    let resp = client
+        .delete(&format!("http://localhost:8080/api/v1/table/{}", job_name))
+        .send()
+        .await
+        .expect("Failed to send second delete request");
+
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::NOT_FOUND,
+        "Second delete should return 404"
+    );
+
+    println!("Delete job idempotency test completed successfully");
+}
+
+#[tokio::test]
+async fn test_delete_job_preserves_source_table() {
+    // Initialize test environment
+    common::init_test_environment().await;
+
+    // Create test table
+    let table = common::create_test_table().await;
+    let job_name = format!("test_delete_preserves_{table}");
+
+    let cfg = vectorize_core::config::Config::from_env();
+    let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
+
+    // Verify source table exists before job creation
+    let source_table_exists_before: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'vectorize_test' 
+            AND table_name = $1
+        )",
+    )
+    .bind(&table)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        source_table_exists_before,
+        "Source table should exist before job creation"
+    );
+
+    // Count rows in source table
+    let row_count_before: i64 =
+        sqlx::query_scalar(&format!("SELECT COUNT(*) FROM vectorize_test.{}", table))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    // Create a vectorize job
+    let payload = json!({
+        "job_name": job_name,
+        "src_table": table,
+        "src_schema": "vectorize_test",
+        "src_columns": ["content"],
+        "primary_key": "id",
+        "update_time_col": "updated_at",
+        "model": "sentence-transformers/all-MiniLM-L6-v2"
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("http://localhost:8080/api/v1/table")
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    // Wait for job to be processed
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // Delete the job
+    let resp = client
+        .delete(&format!("http://localhost:8080/api/v1/table/{}", job_name))
+        .send()
+        .await
+        .expect("Failed to send delete request");
+
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    // Verify source table still exists after job deletion
+    let source_table_exists_after: bool = sqlx::query_scalar(
+        "SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_schema = 'vectorize_test' 
+            AND table_name = $1
+        )",
+    )
+    .bind(&table)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        source_table_exists_after,
+        "Source table should still exist after job deletion"
+    );
+
+    // Verify data in source table is intact
+    let row_count_after: i64 =
+        sqlx::query_scalar(&format!("SELECT COUNT(*) FROM vectorize_test.{}", table))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        row_count_before, row_count_after,
+        "Source table data should be intact"
+    );
+
+    println!("Delete job preserves source table test completed successfully");
+}
+
+#[tokio::test]
+async fn test_delete_job_with_pending_messages() {
+    // Initialize test environment
+    common::init_test_environment().await;
+
+    // Create test table with more data to ensure messages are queued
+    let cfg = vectorize_core::config::Config::from_env();
+    let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
+
+    let mut rng = rand::rng();
+    let test_num = rng.random_range(1..100000);
+    let table = format!("test_pending_msgs_{test_num}");
+
+    // Create table
+    sqlx::query(&format!(
+        "CREATE TABLE IF NOT EXISTS vectorize_test.{table} (
+                id SERIAL PRIMARY KEY, 
+                content TEXT, 
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );"
+    ))
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Insert multiple rows
+    for i in 0..10 {
+        sqlx::query(&format!(
+            "INSERT INTO vectorize_test.{table} (content, updated_at) VALUES ($1, NOW());"
+        ))
+        .bind(format!("test content {}", i))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let job_name = format!("test_pending_{test_num}");
+
+    // Create a vectorize job
+    let payload = json!({
+        "job_name": job_name,
+        "src_table": table,
+        "src_schema": "vectorize_test",
+        "src_columns": ["content"],
+        "primary_key": "id",
+        "update_time_col": "updated_at",
+        "model": "sentence-transformers/all-MiniLM-L6-v2"
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("http://localhost:8080/api/v1/table")
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    // Don't wait for processing - delete immediately to test pending message cleanup
+    // This should leave messages in the queue
+
+    // Delete the job
+    let resp = client
+        .delete(&format!("http://localhost:8080/api/v1/table/{}", job_name))
+        .send()
+        .await
+        .expect("Failed to send delete request");
+
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    // Verify job is deleted
+    let job_exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM vectorize.job WHERE job_name = $1)")
+            .bind(&job_name)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(!job_exists, "Job should be deleted");
+
+    // Wait a bit to allow worker to process any remaining messages
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+    // Check that no errors occurred (worker should skip deleted job messages gracefully)
+    // We can't directly check worker logs, but the test not panicking is a good sign
+
+    println!("Delete job with pending messages test completed successfully");
+}

@@ -412,6 +412,38 @@ pub fn drop_project_view(job_name: &str) -> String {
     format!("DROP VIEW IF EXISTS vectorize.{job_name}_view;")
 }
 
+pub fn drop_embeddings_table(job_name: &str) -> String {
+    format!("DROP TABLE IF EXISTS vectorize._embeddings_{job_name} CASCADE;")
+}
+
+pub fn drop_search_tokens_table(job_name: &str) -> String {
+    format!("DROP TABLE IF EXISTS vectorize._search_tokens_{job_name} CASCADE;")
+}
+
+pub fn drop_trigger_handler(job_name: &str) -> String {
+    format!("DROP FUNCTION IF EXISTS {TRIGGER_FN_PREFIX}{job_name}() CASCADE;")
+}
+
+pub fn drop_event_trigger(
+    job_name: &str,
+    src_schema: &str,
+    src_table: &str,
+    event: &str,
+) -> String {
+    format!(
+        "DROP TRIGGER IF EXISTS vectorize_{event_name}_trigger_{job_name} ON {src_schema}.{src_table};",
+        event_name = event.to_lowercase()
+    )
+}
+
+pub fn drop_search_tokens_trigger(job_name: &str, src_schema: &str, src_table: &str) -> String {
+    format!("DROP TRIGGER IF EXISTS {job_name}_search_tokens_trigger ON {src_schema}.{src_table};")
+}
+
+pub fn delete_job_record(job_name: &str) -> String {
+    format!("DELETE FROM vectorize.job WHERE job_name = '{job_name}';")
+}
+
 /// creates a function that can be called by trigger
 pub fn create_trigger_handler(job_name: &str, pkey: &str) -> String {
     format!(
@@ -1405,5 +1437,98 @@ EXECUTE FUNCTION vectorize.handle_update_another_job();"
             assert_eq!(filter.value, expected_value);
             assert_eq!(filter.operator, FilterOperator::Equal);
         }
+    }
+
+    #[test]
+    fn test_drop_embeddings_table() {
+        let job_name = "test_job";
+        let result = drop_embeddings_table(job_name);
+        assert_eq!(
+            result,
+            "DROP TABLE IF EXISTS vectorize._embeddings_test_job CASCADE;"
+        );
+    }
+
+    #[test]
+    fn test_drop_search_tokens_table() {
+        let job_name = "test_job";
+        let result = drop_search_tokens_table(job_name);
+        assert_eq!(
+            result,
+            "DROP TABLE IF EXISTS vectorize._search_tokens_test_job CASCADE;"
+        );
+    }
+
+    #[test]
+    fn test_drop_trigger_handler() {
+        let job_name = "test_job";
+        let result = drop_trigger_handler(job_name);
+        assert!(result.contains("DROP FUNCTION IF EXISTS"));
+        assert!(result.contains("vectorize.handle_update_test_job()"));
+        assert!(result.contains("CASCADE"));
+    }
+
+    #[test]
+    fn test_drop_event_trigger() {
+        let job_name = "test_job";
+        let src_schema = "public";
+        let src_table = "my_table";
+
+        let insert_trigger = drop_event_trigger(job_name, src_schema, src_table, "INSERT");
+        assert_eq!(
+            insert_trigger,
+            "DROP TRIGGER IF EXISTS vectorize_insert_trigger_test_job ON public.my_table;"
+        );
+
+        let update_trigger = drop_event_trigger(job_name, src_schema, src_table, "UPDATE");
+        assert_eq!(
+            update_trigger,
+            "DROP TRIGGER IF EXISTS vectorize_update_trigger_test_job ON public.my_table;"
+        );
+    }
+
+    #[test]
+    fn test_drop_search_tokens_trigger() {
+        let job_name = "test_job";
+        let src_schema = "public";
+        let src_table = "my_table";
+
+        let result = drop_search_tokens_trigger(job_name, src_schema, src_table);
+        assert_eq!(
+            result,
+            "DROP TRIGGER IF EXISTS test_job_search_tokens_trigger ON public.my_table;"
+        );
+    }
+
+    #[test]
+    fn test_delete_job_record() {
+        let job_name = "test_job";
+        let result = delete_job_record(job_name);
+        assert_eq!(
+            result,
+            "DELETE FROM vectorize.job WHERE job_name = 'test_job';"
+        );
+    }
+
+    #[test]
+    fn test_drop_project_view() {
+        let job_name = "test_job";
+        let result = drop_project_view(job_name);
+        assert_eq!(result, "DROP VIEW IF EXISTS vectorize.test_job_view;");
+    }
+
+    #[test]
+    fn test_cleanup_sql_with_special_chars() {
+        // Test that job names with underscores work correctly
+        let job_name = "my_test_job_123";
+
+        let embeddings = drop_embeddings_table(job_name);
+        assert!(embeddings.contains("_embeddings_my_test_job_123"));
+
+        let tokens = drop_search_tokens_table(job_name);
+        assert!(tokens.contains("_search_tokens_my_test_job_123"));
+
+        let view = drop_project_view(job_name);
+        assert!(view.contains("my_test_job_123_view"));
     }
 }

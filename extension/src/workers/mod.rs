@@ -89,7 +89,19 @@ pub async fn get_vectorize_meta(
 
 /// processes a single job from the queue
 pub async fn execute_job(dbclient: &Pool<Postgres>, msg: Message<JobMessage>) -> Result<()> {
-    let job_meta = get_vectorize_meta(&msg.message.job_name, dbclient).await?;
+    // Check if the job still exists - it may have been deleted
+    let job_meta = match get_vectorize_meta(&msg.message.job_name, dbclient).await {
+        Ok(meta) => meta,
+        Err(DatabaseError::SqlxError(sqlx::Error::RowNotFound)) => {
+            warning!(
+                "pg-vectorize: Job '{}' not found - it may have been deleted. Skipping message.",
+                msg.message.job_name
+            );
+            // Return Ok to allow the message to be deleted from queue
+            return Ok(());
+        }
+        Err(e) => return Err(anyhow::anyhow!("Failed to get job meta: {}", e)),
+    };
     let mut job_params: JobParams = serde_json::from_value(job_meta.params.clone())?;
     let bpe = cl100k_base().unwrap();
 
