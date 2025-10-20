@@ -61,7 +61,7 @@ async fn execute_job(pool: &PgPool, msg: Message<JobMessage>) -> Result<(), Vect
     let bpe = cl100k_base().unwrap();
 
     let job_name = msg.message.job_name.clone();
-    
+
     // Check if the job still exists - it may have been deleted
     let vectorizejob = match db::get_vectorize_job(pool, &job_name).await {
         Ok(job) => job,
@@ -83,7 +83,7 @@ async fn execute_job(pool: &PgPool, msg: Message<JobMessage>) -> Result<(), Vect
         }
         Err(e) => return Err(e),
     };
-    
+
     log::debug!("Retrieved vectorize job: {vectorizejob:?}");
     let provider = providers::get_provider(&vectorizejob.model.source, None, None, None)?;
 
