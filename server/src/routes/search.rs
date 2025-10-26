@@ -79,8 +79,33 @@ pub async fn search(
     app_state: web::Data<AppState>,
     payload: web::Query<SearchRequest>,
 ) -> Result<HttpResponse, ServerError> {
-    let payload = payload.into_inner();
+    search_internal(app_state, payload.into_inner()).await
+}
 
+/// POST /search_json: Accepts a JSON body instead of URL query params for search
+#[utoipa::path(
+    post,
+    path = "/api/v1/search_json",
+    request_body = SearchRequest,
+    responses(
+        (
+            status = 200, description = "Search results",
+            body = Vec<serde_json::Value>,
+        ),
+    ),
+)]
+#[actix_web::post("/search_json")]
+pub async fn search_json(
+    app_state: web::Data<AppState>,
+    payload: web::Json<SearchRequest>,
+) -> Result<HttpResponse, ServerError> {
+    search_internal(app_state, payload.into_inner()).await
+}
+// Internal function for search logic, used by both GET and POST
+async fn search_internal(
+    app_state: web::Data<AppState>,
+    payload: SearchRequest,
+) -> Result<HttpResponse, ServerError> {
     // check inputs and filters are valid if they exist and create a SQL string for them
     query::check_input(&payload.job_name)?;
     if !payload.filters.is_empty() {
@@ -168,7 +193,6 @@ async fn get_vectorize_job(
     pool: &sqlx::PgPool,
     job_name: &str,
 ) -> Result<VectorizeJob, ServerError> {
-    // Changed return type
     match sqlx::query(
         "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model 
          FROM vectorize.job 
