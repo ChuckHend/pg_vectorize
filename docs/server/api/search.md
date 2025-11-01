@@ -43,7 +43,6 @@ Supported operators:
 | `lte` | Less Than or Equal |
 
 The server parses and validates filter values according to the job's schema and allowed columns.
- The default 
 
 ### GET /api/v1/search
 

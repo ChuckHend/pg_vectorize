@@ -119,7 +119,7 @@ pub async fn search(
 #[utoipa::path(
     post,
     path = "/api/v1",
-    request_body = SearchRequest,
+    request_body = SearchRequestPOST,
     responses(
         (
             status = 200, description = "Search results",
@@ -134,6 +134,7 @@ pub async fn search_json(
 ) -> Result<HttpResponse, ServerError> {
     search_internal(app_state, payload.into_inner().into()).await
 }
+
 // Internal function for search logic, used by both GET and POST
 async fn search_internal(
     app_state: web::Data<AppState>,
