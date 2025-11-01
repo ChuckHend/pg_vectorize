@@ -12,3 +12,4 @@ META.json
 /vectorize-*
 site/
 uv.lock
+.vscode

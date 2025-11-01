@@ -93,7 +93,7 @@ impl<'de> serde::Deserialize<'de> for FilterValue {
             type Value = FilterValue;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a string in format 'operator.value' or just 'value'. Found")
+                formatter.write_str("a string in format 'operator.value' or just 'value'.")
             }
 
             fn visit_str<E>(self, value: &str) -> Result<FilterValue, E>
