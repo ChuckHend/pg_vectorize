@@ -30,6 +30,39 @@ pub struct SearchRequest {
     pub filters: BTreeMap<String, FilterValue>,
 }
 
+// Same as GET except without flatten for filters
+#[derive(Serialize, Deserialize, Debug, Clone, ToSchema, FromRow)]
+pub struct SearchRequestPOST {
+    pub job_name: String,
+    pub query: String,
+    #[serde(default = "default_window_size")]
+    pub window_size: i32,
+    #[serde(default = "default_limit")]
+    pub limit: i32,
+    #[serde(default = "default_rrf_k")]
+    pub rrf_k: f32,
+    #[serde(default = "default_semantic_wt")]
+    pub semantic_wt: f32,
+    #[serde(default = "default_fts_wt")]
+    pub fts_wt: f32,
+    pub filters: BTreeMap<String, FilterValue>,
+}
+
+impl From<SearchRequestPOST> for SearchRequest {
+    fn from(request: SearchRequestPOST) -> Self {
+        SearchRequest {
+            job_name: request.job_name,
+            query: request.query,
+            window_size: request.window_size,
+            limit: request.limit,
+            rrf_k: request.rrf_k,
+            semantic_wt: request.semantic_wt,
+            fts_wt: request.fts_wt,
+            filters: request.filters,
+        }
+    }
+}
+
 fn default_semantic_wt() -> f32 {
     1.0
 }
@@ -85,7 +118,7 @@ pub async fn search(
 /// POST /search_json: Accepts a JSON body instead of URL query params for search
 #[utoipa::path(
     post,
-    path = "/api/v1/search_json",
+    path = "/api/v1",
     request_body = SearchRequest,
     responses(
         (
@@ -94,12 +127,12 @@ pub async fn search(
         ),
     ),
 )]
-#[actix_web::post("/search_json")]
+#[actix_web::post("/search")]
 pub async fn search_json(
     app_state: web::Data<AppState>,
-    payload: web::Json<SearchRequest>,
+    payload: web::Json<SearchRequestPOST>,
 ) -> Result<HttpResponse, ServerError> {
-    search_internal(app_state, payload.into_inner()).await
+    search_internal(app_state, payload.into_inner().into()).await
 }
 // Internal function for search logic, used by both GET and POST
 async fn search_internal(

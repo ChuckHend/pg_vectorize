@@ -247,6 +247,40 @@ async fn test_search_filters() {
             i
         );
     }
+
+    // equivalent but using POST
+    let filter_payload = json!({
+        "job_name": job_name,
+        "query": "electronics",
+        "filters": {
+            "price": "gte.25",
+            "product_category": "eq.electronics"
+        },
+        "limit": 5
+    });
+
+    let resp = client
+        .post("http://localhost:8080/api/v1/search")
+        .header("Content-Type", "application/json")
+        .json(&filter_payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "Response status: {:?}",
+        resp.status()
+    );
+
+    let post_search_results: Vec<serde_json::Value> =
+        resp.json().await.expect("Failed to parse search response");
+
+    assert_eq!(post_search_results.len(), 5);
+    for result in &post_search_results {
+        assert_eq!(result["product_category"].as_str().unwrap(), "electronics");
+        assert!(result["price"].as_f64().unwrap() >= 25.0);
+    }
 }
 
 #[tokio::test]

@@ -7,6 +7,7 @@ pub fn route_config(configuration: &mut web::ServiceConfig) {
         web::scope("/api/v1")
             .service(routes::table::table)
             .service(routes::table::delete_table)
-            .service(routes::search::search),
+            .service(routes::search::search)
+            .service(routes::search::search_json),
     );
 }
