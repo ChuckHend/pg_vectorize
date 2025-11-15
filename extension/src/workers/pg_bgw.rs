@@ -8,7 +8,7 @@ use std::time::Duration;
 use crate::workers::run_worker;
 
 #[pg_guard]
-pub extern "C" fn _PG_init() {
+pub extern "C-unwind" fn _PG_init() {
     init_guc();
 
     let num_bgw = NUM_BGW_PROC.get();
@@ -25,7 +25,7 @@ pub extern "C" fn _PG_init() {
 
 #[pg_guard]
 #[no_mangle]
-pub extern "C" fn background_worker_main(_arg: pg_sys::Datum) {
+pub extern "C-unwind" fn background_worker_main(_arg: pg_sys::Datum) {
     BackgroundWorker::attach_signal_handlers(SignalWakeFlags::SIGHUP | SignalWakeFlags::SIGTERM);
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_io()

@@ -207,7 +207,7 @@ fn rag(
 #[pg_extern]
 fn generate(
     input: &str,
-    model: default!(String, "'tembo/meta-llama/Meta-Llama-3-8B-Instruct'"),
+    model: default!(String, "'openai/gpt-4o-mini'"),
     api_key: default!(Option<String>, "NULL"),
 ) -> Result<String> {
     let model = Model::new(&model)?;
