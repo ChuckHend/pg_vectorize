@@ -59,7 +59,9 @@ pub mod common {
     }
 
     pub fn database_port() -> usize {
-        if cfg!(feature = "pg17") {
+        if cfg!(feature = "pg18") {
+            28818
+        } else if cfg!(feature = "pg17") {
             28817
         } else if cfg!(feature = "pg16") {
             28816

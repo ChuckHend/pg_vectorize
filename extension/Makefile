@@ -1,7 +1,7 @@
 SQLX_OFFLINE:=true
 DISTNAME = $(shell grep -m 1 '^name' Cargo.toml | sed -e 's/[^"]*"\([^"]*\)",\{0,1\}/\1/')
 DISTVERSION  = $(shell grep -m 1 '^version' Cargo.toml | sed -e 's/[^"]*"\([^"]*\)",\{0,1\}/\1/')
-PG_VERSION:=17
+PG_VERSION:=18
 DATABASE_URL:=postgres://${USER}:${USER}@localhost:288${PG_VERSION}/postgres
 PGRX_PG_CONFIG:=$(shell cargo pgrx info pg-config pg${PG_VERSION})
 PGRX_VERSION := $(shell grep -E "^pgrx\s*=" Cargo.toml | cut -d'"' -f2 | tr -d '=')

@@ -39,9 +39,8 @@ pub fn batch_texts(
 }
 
 // called by pg_cron on schedule
-// identifiers new inputs and enqueues them
+// identifies new inputs and enqueues them
 #[pg_extern]
-#[pg_guard]
 fn job_execute(job_name: String) {
     log!("pg-vectorize: refresh job: {}", job_name);
     let runtime = tokio::runtime::Builder::new_current_thread()

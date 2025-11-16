@@ -1,88 +1,89 @@
-use anyhow::Result;
-use core::ffi::CStr;
+use std::ffi::CString;
+
 use pgrx::*;
 
 use crate::transformers::generic::env_interpolate_string;
 use vectorize_core::guc::{ModelGucConfig, VectorizeGuc};
 use vectorize_core::types::ModelSource;
 
-pub static VECTORIZE_HOST: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
-pub static VECTORIZE_DATABASE_NAME: GucSetting<Option<&CStr>> =
-    GucSetting::<Option<&CStr>>::new(None);
-pub static OPENAI_BASE_URL: GucSetting<Option<&'static CStr>> =
-    GucSetting::<Option<&'static CStr>>::new(Some(c"https://api.openai.com/v1"));
-pub static OPENAI_KEY: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
+pub static VECTORIZE_HOST: GucSetting<Option<CString>> = GucSetting::<Option<CString>>::new(None);
+pub static VECTORIZE_DATABASE_NAME: GucSetting<Option<CString>> =
+    GucSetting::<Option<CString>>::new(None);
+pub static OPENAI_BASE_URL: GucSetting<Option<CString>> =
+    GucSetting::<Option<CString>>::new(Some(c"https://api.openai.com/v1"));
+pub static OPENAI_KEY: GucSetting<Option<CString>> = GucSetting::<Option<CString>>::new(None);
 pub static BATCH_SIZE: GucSetting<i32> = GucSetting::<i32>::new(10000);
 pub static NUM_BGW_PROC: GucSetting<i32> = GucSetting::<i32>::new(1);
-pub static EMBEDDING_SERVICE_API_KEY: GucSetting<Option<&CStr>> =
-    GucSetting::<Option<&CStr>>::new(None);
-pub static EMBEDDING_SERVICE_HOST: GucSetting<Option<&CStr>> =
-    GucSetting::<Option<&CStr>>::new(None);
+pub static EMBEDDING_SERVICE_API_KEY: GucSetting<Option<CString>> =
+    GucSetting::<Option<CString>>::new(None);
+pub static EMBEDDING_SERVICE_HOST: GucSetting<Option<CString>> =
+    GucSetting::<Option<CString>>::new(None);
 pub static EMBEDDING_REQ_TIMEOUT_SEC: GucSetting<i32> = GucSetting::<i32>::new(120);
-pub static OLLAMA_SERVICE_HOST: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
-pub static TEMBO_SERVICE_HOST: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
-pub static TEMBO_API_KEY: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
-pub static COHERE_API_KEY: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
-pub static PORTKEY_API_KEY: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
-pub static PORTKEY_VIRTUAL_KEY: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
-pub static PORTKEY_SERVICE_URL: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
-pub static VOYAGE_API_KEY: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
-pub static VOYAGE_SERVICE_URL: GucSetting<Option<&CStr>> = GucSetting::<Option<&CStr>>::new(None);
+pub static OLLAMA_SERVICE_HOST: GucSetting<Option<CString>> =
+    GucSetting::<Option<CString>>::new(None);
+pub static COHERE_API_KEY: GucSetting<Option<CString>> = GucSetting::<Option<CString>>::new(None);
+pub static PORTKEY_API_KEY: GucSetting<Option<CString>> = GucSetting::<Option<CString>>::new(None);
+pub static PORTKEY_VIRTUAL_KEY: GucSetting<Option<CString>> =
+    GucSetting::<Option<CString>>::new(None);
+pub static PORTKEY_SERVICE_URL: GucSetting<Option<CString>> =
+    GucSetting::<Option<CString>>::new(None);
+pub static VOYAGE_API_KEY: GucSetting<Option<CString>> = GucSetting::<Option<CString>>::new(None);
+pub static VOYAGE_SERVICE_URL: GucSetting<Option<CString>> =
+    GucSetting::<Option<CString>>::new(None);
 pub static SEMANTIC_WEIGHT: GucSetting<i32> = GucSetting::<i32>::new(50);
 // EXPERIMENTAL
-pub static FTS_INDEX_TYPE: GucSetting<Option<&'static CStr>> =
-    GucSetting::<Option<&'static CStr>>::new(None);
+pub static FTS_INDEX_TYPE: GucSetting<Option<CString>> = GucSetting::<Option<CString>>::new(None);
 
 // initialize GUCs
 pub fn init_guc() {
     GucRegistry::define_string_guc(
-        "vectorize.host",
-        "unix socket url for Postgres",
-        "unix socket path to the Postgres instance. Optional. Can also be set in environment variable.",
+        c"vectorize.host",
+        c"unix socket url for Postgres",
+        c"unix socket path to the Postgres instance. Optional. Can also be set in environment variable.",
         &VECTORIZE_HOST,
         GucContext::Suset, GucFlags::default()
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.database_name",
-        "Target database for vectorize operations",
-        "Specifies the target database for vectorize operations.",
+        c"vectorize.database_name",
+        c"Target database for vectorize operations",
+        c"Specifies the target database for vectorize operations.",
         &VECTORIZE_DATABASE_NAME,
         GucContext::Suset,
         GucFlags::default(),
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.openai_service_url",
-        "Base url to the OpenAI Server",
-        "Url to any OpenAI compatible service.",
+        c"vectorize.openai_service_url",
+        c"Base url to the OpenAI Server",
+        c"Url to any OpenAI compatible service.",
         &OPENAI_BASE_URL,
         GucContext::Suset,
         GucFlags::default(),
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.openai_key",
-        "API key from OpenAI",
-        "API key from OpenAI. Optional. Overridden by any values provided in function calls.",
+        c"vectorize.openai_key",
+        c"API key from OpenAI",
+        c"API key from OpenAI. Optional. Overridden by any values provided in function calls.",
         &OPENAI_KEY,
         GucContext::Suset,
         GucFlags::SUPERUSER_ONLY,
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.ollama_service_url",
-        "Ollama server url",
-        "Scheme, host, and port of the Ollama server",
+        c"vectorize.ollama_service_url",
+        c"Ollama server url",
+        c"Scheme, host, and port of the Ollama server",
         &OLLAMA_SERVICE_HOST,
         GucContext::Suset,
         GucFlags::default(),
     );
 
     GucRegistry::define_int_guc(
-        "vectorize.batch_size",
-        "Vectorize job batch size",
-        "Number of records that can be included in a single vectorize job.",
+        c"vectorize.batch_size",
+        c"Vectorize job batch size",
+        c"Number of records that can be included in a single vectorize job.",
         &BATCH_SIZE,
         1,
         100000,
@@ -91,23 +92,23 @@ pub fn init_guc() {
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.embedding_service_url",
-        "Url for an OpenAI compatible embedding service",
-        "Url to a service with request and response schema consistent with OpenAI's embeddings API.",
+        c"vectorize.embedding_service_url",
+        c"Url for an OpenAI compatible embedding service",
+        c"Url to a service with request and response schema consistent with OpenAI's embeddings API.",
         &EMBEDDING_SERVICE_HOST,
         GucContext::Suset, GucFlags::default());
 
     GucRegistry::define_string_guc(
-        "vectorize.embedding_service_api_key",
-        "API key for vector-serve container",
-        "Used for any models that require a Hugging Face API key in order to download into the vector-serve container. Not required.",
+        c"vectorize.embedding_service_api_key",
+        c"API key for vector-serve container",
+        c"Used for any models that require a Hugging Face API key in order to download into the vector-serve container. Not required.",
         &EMBEDDING_SERVICE_API_KEY,
         GucContext::Suset, GucFlags::default());
 
     GucRegistry::define_int_guc(
-        "vectorize.num_bgw_proc",
-        "Number of bgw processes",
-        "Number of parallel background worker processes to run. Default is 1.",
+        c"vectorize.num_bgw_proc",
+        c"Number of bgw processes",
+        c"Number of parallel background worker processes to run. Default is 1.",
         &NUM_BGW_PROC,
         1,
         10,
@@ -116,9 +117,9 @@ pub fn init_guc() {
     );
 
     GucRegistry::define_int_guc(
-        "vectorize.embedding_req_timeout_sec",
-        "Timeout, in seconds, for embedding transform requests",
-        "Number of seconds to wait for an embedding http request to complete. Default is 120 seconds.",
+        c"vectorize.embedding_req_timeout_sec",
+        c"Timeout, in seconds, for embedding transform requests",
+        c"Number of seconds to wait for an embedding http request to complete. Default is 120 seconds.",
         &EMBEDDING_REQ_TIMEOUT_SEC,
         1,
         1800,
@@ -127,81 +128,63 @@ pub fn init_guc() {
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.tembo_service_url",
-        "Url for an Tembo AI service",
-        "Url to Tembo's public AI hosting service",
-        &TEMBO_SERVICE_HOST,
-        GucContext::Suset,
-        GucFlags::default(),
-    );
-
-    GucRegistry::define_string_guc(
-        "vectorize.tembo_jwt",
-        "JWT for calling Tembo AI service",
-        "JWT for calling Tembo AI service",
-        &TEMBO_API_KEY,
-        GucContext::Suset,
-        GucFlags::default(),
-    );
-
-    GucRegistry::define_string_guc(
-        "vectorize.cohere_api_key",
-        "API Key for calling Cohere Service",
-        "API Key for calling Cohere Service",
+        c"vectorize.cohere_api_key",
+        c"API Key for calling Cohere Service",
+        c"API Key for calling Cohere Service",
         &COHERE_API_KEY,
         GucContext::Suset,
         GucFlags::default(),
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.portkey_service_url",
-        "Base url for the Portkey platform",
-        "Base url for the Portkey platform",
+        c"vectorize.portkey_service_url",
+        c"Base url for the Portkey platform",
+        c"Base url for the Portkey platform",
         &PORTKEY_SERVICE_URL,
         GucContext::Suset,
         GucFlags::default(),
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.portkey_api_key",
-        "API Key for the Portkey platform",
-        "API Key for the Portkey platform",
+        c"vectorize.portkey_api_key",
+        c"API Key for the Portkey platform",
+        c"API Key for the Portkey platform",
         &PORTKEY_API_KEY,
         GucContext::Suset,
         GucFlags::default(),
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.portkey_virtual_key",
-        "Virtual Key for the Portkey platform",
-        "Virtual Key for the Portkey platform",
+        c"vectorize.portkey_virtual_key",
+        c"Virtual Key for the Portkey platform",
+        c"Virtual Key for the Portkey platform",
         &PORTKEY_VIRTUAL_KEY,
         GucContext::Suset,
         GucFlags::default(),
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.voyage_service_url",
-        "Base url for the Voyage AI platform",
-        "Base url for the Voyage AI platform",
+        c"vectorize.voyage_service_url",
+        c"Base url for the Voyage AI platform",
+        c"Base url for the Voyage AI platform",
         &VOYAGE_SERVICE_URL,
         GucContext::Suset,
         GucFlags::default(),
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.voyage_api_key",
-        "API Key for the Voyage AI platform",
-        "API Key for the Voyage AI platform",
+        c"vectorize.voyage_api_key",
+        c"API Key for the Voyage AI platform",
+        c"API Key for the Voyage AI platform",
         &VOYAGE_API_KEY,
         GucContext::Suset,
         GucFlags::default(),
     );
 
     GucRegistry::define_int_guc(
-        "vectorize.semantic_weight",
-        "weight for semantic search",
-        "weight for semantic search. default is 50",
+        c"vectorize.semantic_weight",
+        c"weight for semantic search",
+        c"weight for semantic search. default is 50",
         &SEMANTIC_WEIGHT,
         0,
         100,
@@ -210,9 +193,9 @@ pub fn init_guc() {
     );
 
     GucRegistry::define_string_guc(
-        "vectorize.experimental_fts_index_type",
-        "index type for hybrid search",
-        "valid text index type. e.g. GIN",
+        c"vectorize.experimental_fts_index_type",
+        c"index type for hybrid search",
+        c"valid text index type. e.g. GIN",
         &FTS_INDEX_TYPE,
         GucContext::Suset,
         GucFlags::default(),
@@ -237,24 +220,13 @@ pub fn get_guc(guc: VectorizeGuc) -> Option<String> {
         VectorizeGuc::VoyageServiceUrl => VOYAGE_SERVICE_URL.get(),
         VectorizeGuc::TextIndexType => FTS_INDEX_TYPE.get(),
     };
-    if let Some(cstr) = val {
-        if let Ok(s) = handle_cstr(cstr) {
-            let interpolated = env_interpolate_string(&s).unwrap();
-            Some(interpolated)
-        } else {
-            error!("failed to convert CStr to str");
-        }
+    if let Some(cstring) = val {
+        let s = cstring.to_str().expect("failed to convert CString to str");
+        let interpolated = env_interpolate_string(s).unwrap();
+        Some(interpolated)
     } else {
         debug1!("no value set for GUC: {:?}", guc);
         None
-    }
-}
-
-fn handle_cstr(cstr: &CStr) -> Result<String> {
-    if let Ok(s) = cstr.to_str() {
-        Ok(s.to_owned())
-    } else {
-        Err(anyhow::anyhow!("failed to convert CStr to str"))
     }
 }
 

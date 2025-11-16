@@ -330,7 +330,7 @@ pub async fn cleanup_job(pool: &PgPool, job_name: &str) -> Result<(), VectorizeE
     // Delete pending PGMQ messages for this job
     // We search for messages where the job_name matches
     let delete_messages_query =
-        format!("DELETE FROM pgmq.vectorize_jobs WHERE message->>'job_name' = $1");
+        "DELETE FROM pgmq.vectorize_jobs WHERE message->>'job_name' = $1".to_string();
     match sqlx::query(&delete_messages_query)
         .bind(job_name)
         .execute(pool)
@@ -353,7 +353,7 @@ pub async fn cleanup_job(pool: &PgPool, job_name: &str) -> Result<(), VectorizeE
     let mut tx = pool.begin().await?;
 
     // Generate cleanup SQL statements
-    let cleanup_statements = vec![
+    let cleanup_statements = [
         // Drop triggers first (they depend on the function and table)
         query::drop_event_trigger(job_name, &job.src_schema, &job.src_table, "INSERT"),
         query::drop_event_trigger(job_name, &job.src_schema, &job.src_table, "UPDATE"),
