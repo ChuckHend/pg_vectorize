@@ -1098,21 +1098,7 @@ async fn test_delete_job_with_pending_messages() {
     let cfg = vectorize_core::config::Config::from_env();
     let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
 
-    let mut rng = rand::rng();
-    let test_num = rng.random_range(1..100000);
-    let table = format!("test_pending_msgs_{test_num}");
-
-    // Create table
-    sqlx::query(&format!(
-        "CREATE TABLE IF NOT EXISTS vectorize_test.{table} (
-                id SERIAL PRIMARY KEY, 
-                content TEXT, 
-                updated_at TIMESTAMPTZ DEFAULT NOW()
-            );"
-    ))
-    .execute(&pool)
-    .await
-    .unwrap();
+    let table = common::create_test_table().await;
 
     // Insert multiple rows
     for i in 0..10 {
@@ -1125,7 +1111,7 @@ async fn test_delete_job_with_pending_messages() {
         .unwrap();
     }
 
-    let job_name = format!("test_pending_{test_num}");
+    let job_name = format!("test_pending_{}", table);
 
     // Create a vectorize job
     let payload = json!({

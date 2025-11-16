@@ -330,7 +330,7 @@ pub async fn cleanup_job(pool: &PgPool, job_name: &str) -> Result<(), VectorizeE
     // Delete pending PGMQ messages for this job
     // We search for messages where the job_name matches
     let delete_messages_query =
-        "DELETE FROM pgmq.vectorize_jobs WHERE message->>'job_name' = $1".to_string();
+        "DELETE FROM pgmq.q_vectorize_jobs WHERE message->>'job_name' = $1".to_string();
     match sqlx::query(&delete_messages_query)
         .bind(job_name)
         .execute(pool)
