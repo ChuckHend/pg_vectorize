@@ -15,7 +15,8 @@ COPY Cargo.toml Cargo.lock ./
 
 ENV SQLX_OFFLINE=1
 RUN cargo build --bin vectorize-server --release
-
+RUN cargo build --bin vectorize-worker --release
+    
 FROM rust:1.90.0-slim-bookworm
 
 RUN apt-get update && \
@@ -23,5 +24,6 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 COPY --from=builder /build/target/release/vectorize-server /usr/local/bin/vectorize-server
+COPY --from=builder /build/target/release/vectorize-worker /usr/local/bin/vectorize-worker
 
 CMD ["vectorize-server"]

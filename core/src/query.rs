@@ -731,8 +731,8 @@ pub fn hybrid_search_query(
     }
 
     format!(
-    "
-    SELECT to_jsonb(t) as results 
+        "
+    SELECT to_jsonb(t) as results
     FROM (
         SELECT {cols}, t.rrf_score, t.semantic_rank, t.fts_rank, t.similarity_score
         FROM (
@@ -742,45 +742,32 @@ pub fn hybrid_search_query(
                 s.similarity_score,
                 f.fts_rank,
                 (
-                    CASE
-                        WHEN s.semantic_rank IS NOT NULL THEN {semantic_weight}::float/({rrf_k} + s.semantic_rank)
-                        ELSE 0
-                    END +
-                    CASE
-                        WHEN f.fts_rank IS NOT NULL THEN {fts_weight}::float/({rrf_k} + f.fts_rank)
-                        ELSE 0
-                    END
+                    COALESCE({semantic_weight}::float / ({rrf_k} + s.semantic_rank), 0) +
+                    COALESCE({fts_weight}::float / ({rrf_k} + f.fts_rank), 0)
                 ) as rrf_score
             FROM (
                 SELECT
                     {join_key},
-                    distance,
-                    ROW_NUMBER() OVER (ORDER BY distance) as semantic_rank,
-                    COUNT(*) OVER () as max_semantic_rank,
-                    1 - distance as similarity_score
-                FROM (
-                    SELECT
-                        {join_key},
-                        embeddings <=> $1::vector as distance
-                    FROM vectorize._embeddings_{job_name}
-                ) sub
-                ORDER BY distance
+                    embeddings <=> $1::vector as distance,
+                    ROW_NUMBER() OVER (ORDER BY embeddings <=> $1::vector) as semantic_rank,
+                    1 - (embeddings <=> $1::vector) as similarity_score
+                FROM vectorize._embeddings_{job_name}
+                ORDER BY embeddings <=> $1::vector
                 LIMIT {window_size}
             ) s
             FULL OUTER JOIN (
                 SELECT
                     {join_key},
-                    ROW_NUMBER() OVER (ORDER BY ts_rank_cd(search_tokens, query) DESC) as fts_rank,
-                    COUNT(*) OVER () as max_fts_rank
-                FROM vectorize._search_tokens_{job_name}, 
-                     to_tsquery('english', 
+                    ROW_NUMBER() OVER (ORDER BY ts_rank_cd(search_tokens, query) DESC) as fts_rank
+                FROM vectorize._search_tokens_{job_name},
+                     to_tsquery('english',
                          NULLIF(
                              replace(plainto_tsquery('english', $2)::text, ' & ', ' | '),
                              ''
                          )
                      ) as query
                 WHERE search_tokens @@ query
-                ORDER BY ts_rank_cd(search_tokens, query) DESC 
+                ORDER BY ts_rank_cd(search_tokens, query) DESC
                 LIMIT {window_size}
             ) f ON s.{join_key} = f.{join_key}
         ) t
@@ -789,7 +776,7 @@ pub fn hybrid_search_query(
         ORDER BY t.rrf_score DESC
         LIMIT {limit}
     ) t"
-)
+    )
 }
 #[cfg(test)]
 mod tests {

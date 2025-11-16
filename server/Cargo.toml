@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+[[bin]]
+name = "vectorize-worker"
+path = "src/bin/worker.rs"
+
 [lib]
 name = "vectorize_server"
 path = "src/lib.rs"
