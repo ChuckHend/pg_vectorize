@@ -748,11 +748,16 @@ pub fn hybrid_search_query(
             FROM (
                 SELECT
                     {join_key},
-                    embeddings <=> $1::vector as distance,
-                    ROW_NUMBER() OVER (ORDER BY embeddings <=> $1::vector) as semantic_rank,
-                    1 - (embeddings <=> $1::vector) as similarity_score
-                FROM vectorize._embeddings_{job_name}
-                ORDER BY embeddings <=> $1::vector
+                    distance,
+                    ROW_NUMBER() OVER (ORDER BY distance) as semantic_rank,
+                    1 - distance as similarity_score
+                FROM (
+                    SELECT
+                        {join_key},
+                        embeddings <=> $1::vector as distance
+                    FROM vectorize._embeddings_{job_name}
+                ) sub
+                ORDER BY distance
                 LIMIT {window_size}
             ) s
             FULL OUTER JOIN (
