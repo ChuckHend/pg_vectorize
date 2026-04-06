@@ -9,6 +9,8 @@ on:
       - "worker/**"
       - "core/**"
       - ".github/workflows/server_ci.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
   push:
     branches:
       - main
@@ -17,7 +19,8 @@ on:
       - "worker/**"
       - "core/**"
       - ".github/workflows/server_ci.yml"
-
+      - "Cargo.lock"
+      - "Cargo.toml"
 jobs:
   lint:
     name: Run linters
