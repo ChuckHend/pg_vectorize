@@ -1,7 +1,6 @@
 SOURCE_OBJECTS=app
 
 format:
-	uv run black ${SOURCE_OBJECTS}
 	uv run ruff check --silent --fix --exit-zero ${SOURCE_OBJECTS}
 
 download.models:
@@ -23,4 +22,3 @@ setup:
 
 check:
 	uv run ruff check ${SOURCE_OBJECTS}
-	uv run black --check ${SOURCE_OBJECTS}
