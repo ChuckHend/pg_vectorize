@@ -15,7 +15,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 logging.basicConfig(level=logging.DEBUG)
 
-app = FastAPI(title="Tembo-Embedding-Service")
+app = FastAPI(title="Embedding-Service")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

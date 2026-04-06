@@ -3,7 +3,7 @@ name = "app"
 version = "0.1.0"
 description = ""
 authors = [
-    { name = "Tembo", email = "engineering@tembo.io" }
+    { name = "Adam Hendel", email = "adam@hendel.dev" }
 ]
 readme = "README.md"
 requires-python = ">=3.10"
