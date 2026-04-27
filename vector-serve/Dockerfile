@@ -11,7 +11,7 @@ RUN apt-get update && \
     make && \
     rm -rf /var/lib/apt/lists/*
 
-ARG PYTHON_VERSION=3.14.4
+ARG PYTHON_VERSION=3.13.13
 ARG PROJECT_NAME=vector-serve
 
 ARG UV_PYTHON_INSTALL_DIR=/opt/python

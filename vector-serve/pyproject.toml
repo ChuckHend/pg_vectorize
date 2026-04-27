@@ -18,6 +18,9 @@ dependencies = [
     "transformers>=5.6.0",
 ]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [dependency-groups]
 dev = [
     "ruff",
