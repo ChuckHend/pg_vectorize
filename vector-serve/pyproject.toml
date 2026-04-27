@@ -6,7 +6,7 @@ authors = [
     { name = "Adam Hendel", email = "adam@hendel.dev" }
 ]
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "fastapi[standard]>=0.115.2",
     "sentence-transformers>=5",
@@ -18,13 +18,9 @@ dependencies = [
     "transformers>=5.6.0",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "ruff",
     "pytest>=9",
     "httpx>=0.27",
 ]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"

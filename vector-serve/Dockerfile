@@ -11,7 +11,7 @@ RUN apt-get update && \
     make && \
     rm -rf /var/lib/apt/lists/*
 
-ARG PYTHON_VERSION=3.12.4
+ARG PYTHON_VERSION=3.14.4
 ARG PROJECT_NAME=vector-serve
 
 ARG UV_PYTHON_INSTALL_DIR=/opt/python
@@ -28,7 +28,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 ENV UV_LINK_MODE=copy
 
-COPY vector-serve .
+COPY vector-serve/pyproject.toml .
+COPY vector-serve/uv.lock .
+COPY vector-serve/app ./app
 
 RUN uv venv --python "${PYTHON_VERSION}" && \
     uv sync --no-dev --frozen && \

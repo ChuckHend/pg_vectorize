@@ -1,5 +1,6 @@
 import os
 
+
 def test_ready_endpoint(test_client):
     response = test_client.get("/ready")
     assert response.status_code == 200
@@ -24,6 +25,7 @@ def test_metrics_endpoint(test_client):
     assert response.status_code == 200
     assert "all-MiniLM-L6-v2" in response.text
 
+
 def test_private_hf_model(test_client):
     response = test_client.post(
         "/v1/embeddings",
@@ -31,8 +33,8 @@ def test_private_hf_model(test_client):
         json={
             "input": ["string"],
             "model": "chuckhend/private-model",
-            "normalize": False
-        }
+            "normalize": False,
+        },
     )
     assert response.status_code == 200
     assert "data" in response.json()
