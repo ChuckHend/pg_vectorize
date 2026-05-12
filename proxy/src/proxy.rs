@@ -137,6 +137,34 @@ where
     Ok(())
 }
 
+/// Runs the TCP accept loop, dispatching each client connection to a handler task.
+/// Takes a pre-built config so callers (e.g. the standalone binary) can share it
+/// with other subsystems like the cache sync listener.
+pub async fn run_proxy_loop(
+    config: Arc<ProxyConfig>,
+    listen_addr: SocketAddr,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let listener = TcpListener::bind(listen_addr).await?;
+
+    loop {
+        match listener.accept().await {
+            Ok((client_stream, client_addr)) => {
+                info!("New proxy connection from: {client_addr}");
+
+                let config = Arc::clone(&config);
+                tokio::spawn(async move {
+                    if let Err(e) = handle_connection_with_timeout(client_stream, config).await {
+                        error!("Proxy connection error from {client_addr}: {e}");
+                    }
+                });
+            }
+            Err(e) => {
+                error!("Failed to accept proxy connection: {e}");
+            }
+        }
+    }
+}
+
 pub async fn start_postgres_proxy(
     proxy_port: u16,
     database_url: String,
@@ -168,23 +196,5 @@ pub async fn start_postgres_proxy(
     info!("Proxy listening on: {listen_addr}");
     info!("Forwarding to PostgreSQL at: {postgres_addr}");
 
-    let listener = TcpListener::bind(listen_addr).await?;
-
-    loop {
-        match listener.accept().await {
-            Ok((client_stream, client_addr)) => {
-                info!("New proxy connection from: {client_addr}");
-
-                let config = Arc::clone(&config);
-                tokio::spawn(async move {
-                    if let Err(e) = handle_connection_with_timeout(client_stream, config).await {
-                        error!("Proxy connection error from {client_addr}: {e}");
-                    }
-                });
-            }
-            Err(e) => {
-                error!("Failed to accept proxy connection: {e}");
-            }
-        }
-    }
+    run_proxy_loop(config, listen_addr).await
 }
