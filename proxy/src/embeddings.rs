@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use vectorize_core::errors::VectorizeError;
-use vectorize_core::query::hybrid_search_query;
+use vectorize_core::query::hybrid_search_query_rows;
 use vectorize_core::transformers::providers::{self, prepare_generic_embedding_request};
 use vectorize_core::transformers::types::Inputs;
 use vectorize_core::types::VectorizeJob;
@@ -152,7 +152,7 @@ pub async fn rewrite_search_query(
     let embedding_literal = format_embeddings_as_vector(&embeddings);
 
     let window_size = 5 * call.num_results;
-    let template_sql = hybrid_search_query(
+    let template_sql = hybrid_search_query_rows(
         &call.job_name, // vectorize_job.job_name was cleared by mem::take in cache load
         &vectorize_job.src_schema,
         &vectorize_job.src_table,
@@ -175,7 +175,12 @@ pub async fn rewrite_search_query(
         .replace("$1::vector", &embedding_literal)
         .replace("$2", &query_literal);
 
-    Ok(Some(inlined_sql))
+    // Splice the subquery in place of `vectorize.search(...)`, keeping any outer
+    // SELECT column list, WHERE, ORDER BY, or LIMIT the caller wrote.
+    let subquery = format!("({inlined_sql}\n    ) AS _vectorize_search");
+    let mut rewritten = sql.to_string();
+    rewritten.replace_range(call.start_pos..call.end_pos, &subquery);
+    Ok(Some(rewritten))
 }
 
 pub fn parse_embed_calls(sql: &str) -> Result<Vec<EmbedCall>> {

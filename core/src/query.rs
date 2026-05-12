@@ -699,37 +699,34 @@ pub fn join_table_cosine_similarity(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn hybrid_search_query(
-    job_name: &str,
-    src_schema: &str,
-    src_table: &str,
-    join_key: &str,
-    return_columns: &[String],
-    window_size: i32,
-    limit: i32,
-    rrf_k: f32,
-    semantic_weight: f32,
-    fts_weight: f32,
-    filters: &BTreeMap<String, FilterValue>,
-) -> String {
-    let cols = &return_columns
-        .iter()
-        .map(|s| format!("t0.{s}"))
-        .collect::<Vec<_>>()
-        .join(",");
-
+fn build_where_filter(filters: &BTreeMap<String, FilterValue>) -> String {
     let mut where_filter = "WHERE 1=1".to_string();
     for (bind_value_counter, (column, filter_value)) in (3_i16..).zip(filters.iter()) {
         let operator = filter_value.operator.to_sql();
         let filt = format!(" AND t0.\"{column}\" {operator} ${bind_value_counter}");
         where_filter.push_str(&filt);
     }
+    where_filter
+}
 
+/// Generates the core hybrid search SELECT that returns raw table rows.
+/// `$1::vector` and `$2` are sqlx bind parameter placeholders for the embedding and query text.
+#[allow(clippy::too_many_arguments)]
+fn hybrid_search_rows_sql(
+    job_name: &str,
+    src_schema: &str,
+    src_table: &str,
+    join_key: &str,
+    cols: &str,
+    window_size: i32,
+    limit: i32,
+    rrf_k: f32,
+    semantic_weight: f32,
+    fts_weight: f32,
+    where_filter: &str,
+) -> String {
     format!(
         "
-    SELECT to_jsonb(t) as results
-    FROM (
         SELECT {cols}, t.rrf_score, t.semantic_rank, t.fts_rank, t.similarity_score
         FROM (
             SELECT
@@ -775,8 +772,87 @@ pub fn hybrid_search_query(
         INNER JOIN {src_schema}.{src_table} t0 ON t0.{join_key} = t.{join_key}
         {where_filter}
         ORDER BY t.rrf_score DESC
-        LIMIT {limit}
+        LIMIT {limit}"
+    )
+}
+
+/// Hybrid search returning each result row wrapped in a `results` JSONB column.
+/// Used by the HTTP server.
+#[allow(clippy::too_many_arguments)]
+pub fn hybrid_search_query(
+    job_name: &str,
+    src_schema: &str,
+    src_table: &str,
+    join_key: &str,
+    return_columns: &[String],
+    window_size: i32,
+    limit: i32,
+    rrf_k: f32,
+    semantic_weight: f32,
+    fts_weight: f32,
+    filters: &BTreeMap<String, FilterValue>,
+) -> String {
+    let cols = return_columns
+        .iter()
+        .map(|s| format!("t0.{s}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let where_filter = build_where_filter(filters);
+    let inner = hybrid_search_rows_sql(
+        job_name,
+        src_schema,
+        src_table,
+        join_key,
+        &cols,
+        window_size,
+        limit,
+        rrf_k,
+        semantic_weight,
+        fts_weight,
+        &where_filter,
+    );
+    format!(
+        "
+    SELECT to_jsonb(t) as results
+    FROM ({inner}
     ) t"
+    )
+}
+
+/// Hybrid search returning raw table columns (`t0.*` plus ranking scores).
+/// Used by the SQL proxy so results arrive as a normal table, not JSON.
+#[allow(clippy::too_many_arguments)]
+pub fn hybrid_search_query_rows(
+    job_name: &str,
+    src_schema: &str,
+    src_table: &str,
+    join_key: &str,
+    return_columns: &[String],
+    window_size: i32,
+    limit: i32,
+    rrf_k: f32,
+    semantic_weight: f32,
+    fts_weight: f32,
+    filters: &BTreeMap<String, FilterValue>,
+) -> String {
+    let cols = return_columns
+        .iter()
+        .map(|s| format!("t0.{s}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let where_filter = build_where_filter(filters);
+    hybrid_search_rows_sql(
+        job_name,
+        src_schema,
+        src_table,
+        join_key,
+        &cols,
+        window_size,
+        limit,
+        rrf_k,
+        semantic_weight,
+        fts_weight,
+        &where_filter,
     )
 }
 #[cfg(test)]
