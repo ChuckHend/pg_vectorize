@@ -10,7 +10,7 @@ services:
     logging: *default-logging
     environment:
       POSTGRES_PASSWORD: postgres
-    image: pgvector/pgvector:0.8.1-pg18
+    image: pgvector/pgvector:0.8.2-pg18
     ports:
       - 5432:5432
     healthcheck:
