@@ -143,10 +143,7 @@ pub async fn rewrite_search_query(
     let call = &search_calls[0];
 
     let vectorize_job = provider.jobmap.get(&call.job_name).ok_or_else(|| {
-        VectorizeError::JobNotFound(format!(
-            "Job '{}' not found in proxy cache",
-            call.job_name
-        ))
+        VectorizeError::JobNotFound(format!("Job '{}' not found in proxy cache", call.job_name))
     })?;
 
     let embeddings = provider
@@ -156,7 +153,7 @@ pub async fn rewrite_search_query(
 
     let window_size = 5 * call.num_results;
     let template_sql = hybrid_search_query(
-        &vectorize_job.job_name,
+        &call.job_name, // vectorize_job.job_name was cleared by mem::take in cache load
         &vectorize_job.src_schema,
         &vectorize_job.src_table,
         &vectorize_job.primary_key,
@@ -380,7 +377,8 @@ mod tests {
 
     #[test]
     fn test_parse_search_calls_with_limit_alias() {
-        let sql = "SELECT * FROM vectorize.search(job=>'my_job', query=>'camping backpack', limit=>3)";
+        let sql =
+            "SELECT * FROM vectorize.search(job=>'my_job', query=>'camping backpack', limit=>3)";
         let calls = parse_search_calls(sql).unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].num_results, 3);

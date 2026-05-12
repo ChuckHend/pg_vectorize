@@ -665,13 +665,11 @@ pub fn join_table_cosine_similarity(
         .collect::<Vec<_>>()
         .join(",");
 
-    let mut bind_value_counter: i16 = 2; // Start at $2 since $1 is the vector
     let mut where_filter = "WHERE 1=1".to_string();
-    for (column, filter_value) in filters.iter() {
+    for (bind_value_counter, (column, filter_value)) in (2_i16..).zip(filters.iter()) {
         let operator = filter_value.operator.to_sql();
         let filt = format!(" AND t0.\"{column}\" {operator} ${bind_value_counter}");
         where_filter.push_str(&filt);
-        bind_value_counter += 1;
     }
 
     let inner_query = format!(
@@ -721,13 +719,11 @@ pub fn hybrid_search_query(
         .collect::<Vec<_>>()
         .join(",");
 
-    let mut bind_value_counter: i16 = 3;
     let mut where_filter = "WHERE 1=1".to_string();
-    for (column, filter_value) in filters.iter() {
+    for (bind_value_counter, (column, filter_value)) in (3_i16..).zip(filters.iter()) {
         let operator = filter_value.operator.to_sql();
         let filt = format!(" AND t0.\"{column}\" {operator} ${bind_value_counter}");
         where_filter.push_str(&filt);
-        bind_value_counter += 1;
     }
 
     format!(
