@@ -217,6 +217,37 @@ pub async fn process_parse_message(
         if offset > query_start {
             let sql = String::from_utf8_lossy(&data[query_start..offset]).to_string();
 
+            if let Ok(search_calls) = parse_search_calls(&sql)
+                && !search_calls.is_empty()
+            {
+                let jobmap_read = config.jobmap.read().await;
+                let embedding_provider =
+                    JobMapEmbeddingProvider::new(Arc::new(jobmap_read.clone()));
+                drop(jobmap_read);
+
+                match rewrite_search_query(&sql, &embedding_provider).await {
+                    Ok(Some(rewritten_sql)) => {
+                        let rewritten_message = create_parse_message_with_rewritten_query(
+                            data,
+                            query_start,
+                            offset,
+                            &rewritten_sql,
+                        );
+                        let parsed = ParsedMessage {
+                            message_type: PARSE_MESSAGE,
+                            sql: Some(rewritten_sql),
+                            has_embed_calls: true,
+                            rewritten: true,
+                        };
+                        return Some((rewritten_message, parsed));
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        log::warn!("Failed to rewrite vectorize.search() in Parse: {e}");
+                    }
+                }
+            }
+
             if let Ok(embed_calls) = parse_embed_calls(&sql)
                 && !embed_calls.is_empty()
             {
