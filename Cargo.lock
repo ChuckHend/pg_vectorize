@@ -4255,7 +4255,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "log",
  "pgwire",
  "rand 0.8.6",
  "regex",

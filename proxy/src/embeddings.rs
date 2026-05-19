@@ -80,7 +80,7 @@ pub struct SearchCall {
 pub fn parse_search_calls(sql: &str) -> Result<Vec<SearchCall>> {
     let mut calls = Vec::new();
 
-    let call_re = Regex::new(r"(?i)vectorize\.search\s*\(([^)]*)\)")?;
+    let call_re = Regex::new(r"(?i)vectorize\.search\s*\(((?:'(?:[^']|'')*'|[^)])*)\)")?;
     let job_re = Regex::new(r"(?i)job\s*=>\s*'((?:[^']|'')*)'")?;
     let query_re = Regex::new(r"(?i)query\s*=>\s*'((?:[^']|'')*)'")?;
     let num_results_re = Regex::new(r"(?i)(?:num_results|limit)\s*=>\s*(\d+)")?;
@@ -412,5 +412,14 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].job_name, "it's a job");
         assert_eq!(calls[0].query, "o'malley's bar");
+    }
+
+    #[test]
+    fn test_parse_search_calls_paren_in_query() {
+        let sql = "SELECT * FROM vectorize.search(job=>'my_job', query=>'find func(arg)')";
+        let calls = parse_search_calls(sql).unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].job_name, "my_job");
+        assert_eq!(calls[0].query, "find func(arg)");
     }
 }

@@ -50,7 +50,6 @@ async fn main() -> anyhow::Result<()> {
 
     setup_job_change_notifications(&pool)
         .await
-        .map_err(|e| anyhow::anyhow!("{e}"))
         .map_err(|e| anyhow::anyhow!("Failed to set up job change notifications: {e}"))?;
 
     let initial_cache = load_initial_job_cache(&pool).await?;
