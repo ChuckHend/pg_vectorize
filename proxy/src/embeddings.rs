@@ -1,6 +1,26 @@
 use anyhow::Result;
 use regex::Regex;
 use std::collections::{BTreeMap, HashMap};
+use std::sync::LazyLock;
+
+static SEARCH_CALL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)vectorize\.search\s*\(((?:'(?:[^']|'')*'|[^)])*)\)").unwrap()
+});
+static SEARCH_JOB_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)job\s*=>\s*'((?:[^']|'')*)'").unwrap());
+static SEARCH_QUERY_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)query\s*=>\s*'((?:[^']|'')*)'").unwrap());
+static SEARCH_NUM_RESULTS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)(?:num_results|limit)\s*=>\s*(\d+)").unwrap());
+static EMBED_STRING_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)vectorize\.embed\s*\(\s*'([^']*(?:''[^']*)*)'\s*,\s*'([^']*(?:''[^']*)*)'\s*\)",
+    )
+    .unwrap()
+});
+static EMBED_PARAM_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)vectorize\.embed\s*\(\s*\$(\d+)\s*,\s*\$(\d+)\s*\)").unwrap()
+});
 use std::sync::Arc;
 
 use vectorize_core::errors::VectorizeError;
@@ -80,32 +100,27 @@ pub struct SearchCall {
 pub fn parse_search_calls(sql: &str) -> Result<Vec<SearchCall>> {
     let mut calls = Vec::new();
 
-    let call_re = Regex::new(r"(?i)vectorize\.search\s*\(((?:'(?:[^']|'')*'|[^)])*)\)")?;
-    let job_re = Regex::new(r"(?i)job\s*=>\s*'((?:[^']|'')*)'")?;
-    let query_re = Regex::new(r"(?i)query\s*=>\s*'((?:[^']|'')*)'")?;
-    let num_results_re = Regex::new(r"(?i)(?:num_results|limit)\s*=>\s*(\d+)")?;
-
-    for mat in call_re.find_iter(sql) {
+    for mat in SEARCH_CALL_RE.find_iter(sql) {
         let full_match = mat.as_str().to_string();
-        let args_str = call_re
+        let args_str = SEARCH_CALL_RE
             .captures(mat.as_str())
             .and_then(|c| c.get(1))
             .map(|m| m.as_str())
             .unwrap_or("");
 
-        let job_name = job_re
+        let job_name = SEARCH_JOB_RE
             .captures(args_str)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().replace("''", "'"))
             .ok_or_else(|| anyhow::anyhow!("Missing 'job' parameter in vectorize.search()"))?;
 
-        let query = query_re
+        let query = SEARCH_QUERY_RE
             .captures(args_str)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().replace("''", "'"))
             .ok_or_else(|| anyhow::anyhow!("Missing 'query' parameter in vectorize.search()"))?;
 
-        let num_results = num_results_re
+        let num_results = SEARCH_NUM_RESULTS_RE
             .captures(args_str)
             .and_then(|c| c.get(1))
             .and_then(|m| m.as_str().parse().ok())
@@ -186,21 +201,13 @@ pub async fn rewrite_search_query(
 pub fn parse_embed_calls(sql: &str) -> Result<Vec<EmbedCall>> {
     let mut calls = Vec::new();
 
-    // matches vectorize.embed('query', 'project_name')  string literals only
-    let string_re = Regex::new(
-        r"(?i)vectorize\.embed\s*\(\s*'([^']*(?:''[^']*)*)'\s*,\s*'([^']*(?:''[^']*)*)'\s*\)",
-    )?;
-
-    // matches vectorize.embed($1, $2) prepared statement parameters
-    let param_re = Regex::new(r"(?i)vectorize\.embed\s*\(\s*\$(\d+)\s*,\s*\$(\d+)\s*\)")?;
-
     // Parse string literal calls
-    for mat in string_re.find_iter(sql) {
+    for mat in EMBED_STRING_RE.find_iter(sql) {
         let full_match = mat.as_str().to_string();
         let start_pos = mat.start();
         let end_pos = mat.end();
 
-        if let Some(captures) = string_re.captures(&full_match) {
+        if let Some(captures) = EMBED_STRING_RE.captures(&full_match) {
             let query = captures.get(1).unwrap().as_str().replace("''", "'");
             let project_name = captures.get(2).unwrap().as_str().replace("''", "'");
 
@@ -218,12 +225,12 @@ pub fn parse_embed_calls(sql: &str) -> Result<Vec<EmbedCall>> {
     }
 
     // parse prepared statement parameter calls
-    for mat in param_re.find_iter(sql) {
+    for mat in EMBED_PARAM_RE.find_iter(sql) {
         let full_match = mat.as_str().to_string();
         let start_pos = mat.start();
         let end_pos = mat.end();
 
-        if let Some(captures) = param_re.captures(&full_match) {
+        if let Some(captures) = EMBED_PARAM_RE.captures(&full_match) {
             // convert 1-based indices to 0-based (e.g. bind parameters from $1 -> 0)
             let query_param_index = captures.get(1).unwrap().as_str().parse::<usize>()? - 1;
             let project_param_index = captures.get(2).unwrap().as_str().parse::<usize>()? - 1;

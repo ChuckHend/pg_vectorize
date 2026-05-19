@@ -1,5 +1,5 @@
 use crate::embeddings::{
-    JobMapEmbeddingProvider, parse_embed_calls, parse_search_calls, resolve_prepared_embed_calls,
+    JobMapEmbeddingProvider, parse_embed_calls, resolve_prepared_embed_calls,
     rewrite_query_with_embeddings, rewrite_search_query,
 };
 use std::sync::Arc;
@@ -133,8 +133,6 @@ pub async fn process_simple_query_message(
         let sql = String::from_utf8_lossy(&query_bytes[..null_pos]).to_string();
 
         // Check for vectorize.search() calls first — these fully replace the query.
-        if let Ok(search_calls) = parse_search_calls(&sql)
-            && !search_calls.is_empty()
         {
             let jobmap_read = config.jobmap.read().await;
             let embedding_provider = JobMapEmbeddingProvider::new(Arc::new(jobmap_read.clone()));
@@ -216,8 +214,6 @@ pub async fn process_parse_message(
         if offset > query_start {
             let sql = String::from_utf8_lossy(&data[query_start..offset]).to_string();
 
-            if let Ok(search_calls) = parse_search_calls(&sql)
-                && !search_calls.is_empty()
             {
                 let jobmap_read = config.jobmap.read().await;
                 let embedding_provider =
