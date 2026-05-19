@@ -48,14 +48,14 @@ Search using SQL by connecting `psql` to the proxy port (5433):
 
 ```bash
 psql postgres://postgres:postgres@localhost:5433/postgres -c \
-  "SELECT * FROM vectorize.search(job=>'my_job', query=>'camping backpack', num_results=>3);"
+  "SELECT product_id, product_name, semantic_rank, fts_rank, similarity_score FROM vectorize.search(job=>'my_job', query=>'camping backpack', num_results=>3);"
 ```
 
 ```text
-                                                                       results                                                                                                                                                                             
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- {"price": 45.00, "fts_rank": 1, "rrf_score": 0.03278688524590164, "product_id": 6, "updated_at": "2026-05-12T14:37:26.610753+00:00", "description": "Storage solution for carrying personal items on ones back", "product_name": "Backpack", "semantic_rank": 1, "product_category": "accessories", "similarity_score": 0.6296013593673885}
- {"price": 40.00, "fts_rank": null, "rrf_score": 0.016129032258064516, "product_id": 39, "updated_at": "2026-05-12T14:37:26.610753+00:00", "description": "Sling made of fabric or netting, suspended between two points for relaxation", "product_name": "Hammock", "semantic_rank": 2, "product_category": "outdoor", "similarity_score": 0.3789524291697087}
- {"price": 10.99, "fts_rank": null, "rrf_score": 0.015873015873015872, "product_id": 12, "updated_at": "2026-05-12T14:37:26.610753+00:00", "description": "Insulated container for beverages on-the-go", "product_name": "Travel Mug", "semantic_rank": 3, "product_category": "kitchenware", "similarity_score": 0.35918538314991255}
+ product_id | product_name | semantic_rank | fts_rank |  similarity_score   
+------------+--------------+---------------+----------+---------------------
+          6 | Backpack     |             1 |        1 |  0.6296013593673706
+         39 | Hammock      |             2 |          | 0.37895236548639444
+         12 | Travel Mug   |             3 |          |  0.3591853487248824
 (3 rows)
 ```
