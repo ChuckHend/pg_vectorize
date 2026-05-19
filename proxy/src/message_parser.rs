@@ -2,8 +2,8 @@ use crate::embeddings::{
     JobMapEmbeddingProvider, parse_embed_calls, parse_search_calls, resolve_prepared_embed_calls,
     rewrite_query_with_embeddings, rewrite_search_query,
 };
-use log::info;
 use std::sync::Arc;
+use tracing::{debug, info, warn};
 
 use super::protocol::{
     BIND_MESSAGE, CLOSE_MESSAGE, DESCRIBE_MESSAGE, EXECUTE_MESSAGE, MIN_MESSAGE_HEADER_SIZE,
@@ -79,10 +79,9 @@ pub fn log_message_processing(parsed: &ParsedMessage) {
         SYNC_MESSAGE => "Sync (Extended Query)",
         _ => "Unknown message type",
     };
-    log::debug!(
+    debug!(
         "Processing message type: {} ({})",
-        message_name,
-        parsed.message_type
+        message_name, parsed.message_type
     );
 
     if parsed.has_embed_calls && parsed.rewritten {
@@ -154,7 +153,7 @@ pub async fn process_simple_query_message(
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    log::warn!("Failed to rewrite vectorize.search() query: {e}");
+                    warn!("Failed to rewrite vectorize.search() query: {e}");
                 }
             }
         }
@@ -243,7 +242,7 @@ pub async fn process_parse_message(
                     }
                     Ok(None) => {}
                     Err(e) => {
-                        log::warn!("Failed to rewrite vectorize.search() in Parse: {e}");
+                        warn!("Failed to rewrite vectorize.search() in Parse: {e}");
                     }
                 }
             }

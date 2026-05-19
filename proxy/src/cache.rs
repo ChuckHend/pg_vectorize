@@ -1,7 +1,7 @@
-use log::{error, info};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tracing::{error, info};
 use vectorize_core::types::VectorizeJob;
 
 use super::protocol::{ProxyConfig, WireProxyError};

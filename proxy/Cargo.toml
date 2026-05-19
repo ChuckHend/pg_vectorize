@@ -16,7 +16,6 @@ clap = { version = "4.0", features = ["derive", "env"] }
 vectorize_core = { package = "vectorize-core", path = "../core" }
 
 anyhow = { workspace = true }
-log = { workspace = true }
 regex = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true}
