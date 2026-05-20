@@ -56,7 +56,10 @@ async fn main() -> anyhow::Result<()> {
     info!("Loaded {} jobs into proxy cache", initial_cache.len());
 
     let url = Url::parse(&args.database_url)?;
-    let postgres_host = url.host_str().unwrap().to_string();
+    let postgres_host = url
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("Missing host in database URL"))?
+        .to_string();
     let postgres_port = url.port().unwrap_or(5432);
     let postgres_addr: SocketAddr = format!("{postgres_host}:{postgres_port}")
         .to_socket_addrs()?
