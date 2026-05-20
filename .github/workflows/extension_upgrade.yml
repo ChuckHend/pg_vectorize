@@ -24,7 +24,7 @@ jobs:
           - 3000:3000
     steps:
       - name: Checkout repository content
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust stable toolchain
         uses: actions-rs/toolchain@v1

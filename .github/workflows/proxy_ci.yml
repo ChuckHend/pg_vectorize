@@ -1,0 +1,110 @@
+name: Proxy CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "proxy/**"
+      - "core/**"
+      - ".github/workflows/proxy_ci.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+  push:
+    branches:
+      - main
+    paths:
+      - "proxy/**"
+      - "core/**"
+      - ".github/workflows/proxy_ci.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust stable with clippy and rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Cargo format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy -p vectorize-proxy
+
+  test-unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run unit tests
+        run: cargo test --lib -p vectorize-proxy
+
+  test-integration:
+    name: Integration tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Start Postgres and vector-serve
+        run: docker compose up postgres vector-serve -d
+      - name: Wait for Postgres
+        run: until pg_isready -h localhost -p 5432 -U postgres; do sleep 2; done
+      - name: Wait for vector-serve
+        run: until curl -sf http://localhost:3000/alive; do sleep 2; done
+        timeout-minutes: 3
+      - name: Load example dataset
+        run: psql postgresql://postgres:postgres@localhost:5432/postgres -f server/sql/example.sql
+      - name: Build proxy binaries
+        run: cargo build --bin vectorize-server --bin vectorize-proxy
+      - name: Start vectorize-server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          EMBEDDING_SVC_URL: http://localhost:3000/v1
+          RUST_LOG: info
+        run: ./target/debug/vectorize-server &
+      - name: Wait for vectorize-server
+        run: until curl -sf http://localhost:8080/health/live; do sleep 2; done
+        timeout-minutes: 2
+      - name: Create embedding job
+        run: |
+          curl -sf -X POST http://localhost:8080/api/v1/table \
+            -H "Content-Type: application/json" \
+            -d '{"job_name":"my_job","src_table":"my_products","src_schema":"public","src_columns":["product_name","description"],"primary_key":"product_id","update_time_col":"updated_at","model":"sentence-transformers/all-MiniLM-L6-v2"}'
+      - name: Wait for embeddings to be generated
+        run: |
+          until psql postgresql://postgres:postgres@localhost:5432/postgres \
+            -c "SELECT 1 FROM vectorize._embeddings_my_job LIMIT 1;" 2>/dev/null | grep -q "(1 row)"; do
+            sleep 5
+          done
+        timeout-minutes: 5
+      - name: Start vectorize-proxy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          EMBEDDING_SVC_URL: http://localhost:3000/v1
+          RUST_LOG: info
+        run: ./target/debug/vectorize-proxy &
+      - name: Wait for vectorize-proxy
+        run: until pg_isready -h localhost -p 5433; do sleep 2; done
+        timeout-minutes: 1
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          EMBEDDING_SVC_URL: http://localhost:3000/v1
+        run: cargo test --test proxy -p vectorize-proxy
+      - name: Debugging info
+        if: failure()
+        run: |
+          docker compose logs
+          docker ps
