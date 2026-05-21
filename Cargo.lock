@@ -4244,6 +4244,7 @@ dependencies = [
  "tiktoken-rs",
  "tokio",
  "tokio-postgres",
+ "tracing",
  "url",
  "utoipa 5.4.0",
  "uuid",
