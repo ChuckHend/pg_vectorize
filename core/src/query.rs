@@ -699,14 +699,18 @@ pub fn join_table_cosine_similarity(
     )
 }
 
-fn build_where_filter(filters: &BTreeMap<String, FilterValue>) -> String {
+fn build_where_filter_with_start(filters: &BTreeMap<String, FilterValue>, start: i16) -> String {
     let mut where_filter = "WHERE 1=1".to_string();
-    for (bind_value_counter, (column, filter_value)) in (3_i16..).zip(filters.iter()) {
+    for (bind_value_counter, (column, filter_value)) in (start..).zip(filters.iter()) {
         let operator = filter_value.operator.to_sql();
         let filt = format!(" AND t0.\"{column}\" {operator} ${bind_value_counter}");
         where_filter.push_str(&filt);
     }
     where_filter
+}
+
+fn build_where_filter(filters: &BTreeMap<String, FilterValue>) -> String {
+    build_where_filter_with_start(filters, 3)
 }
 
 /// Generates the core hybrid search SELECT that returns raw table rows.
@@ -855,6 +859,107 @@ pub fn hybrid_search_query_rows(
         &where_filter,
     )
 }
+/// Generates the three-arm hybrid search SQL (semantic + FTS + BM25).
+///
+/// Bind parameters:
+///   $1 - embedding vector
+///   $2 - FTS query text
+///   $3 - BM25 ranked PKs as text[] (ordered by Tantivy BM25 score)
+///   $4+ - filter values
+///
+/// The BM25 CTE joins the `$3` array back to the source table so the PK
+/// type is resolved correctly regardless of whether it is int, uuid, or text.
+#[allow(clippy::too_many_arguments)]
+pub fn hybrid_search_query_with_bm25(
+    job_name: &str,
+    src_schema: &str,
+    src_table: &str,
+    join_key: &str,
+    return_columns: &[String],
+    window_size: i32,
+    limit: i32,
+    rrf_k: f32,
+    semantic_weight: f32,
+    fts_weight: f32,
+    bm25_weight: f32,
+    filters: &BTreeMap<String, FilterValue>,
+) -> String {
+    let cols = return_columns
+        .iter()
+        .map(|s| format!("t0.{s}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    // filters start at $4 because $3 is the BM25 PKs array
+    let where_filter = build_where_filter_with_start(filters, 4);
+
+    let inner = format!(
+        "
+        WITH bm25_cte AS (
+            SELECT t0.{join_key}, b.bm25_rank
+            FROM (
+                SELECT val AS pk_text, ord::int AS bm25_rank
+                FROM unnest($3::text[]) WITH ORDINALITY AS t(val, ord)
+            ) b
+            JOIN {src_schema}.{src_table} t0 ON t0.{join_key}::text = b.pk_text
+        )
+        SELECT {cols}, t.rrf_score, t.semantic_rank, t.fts_rank, t.bm25_rank, t.similarity_score
+        FROM (
+            SELECT
+                COALESCE(s.{join_key}, f.{join_key}, bm25.{join_key}) AS {join_key},
+                s.semantic_rank,
+                s.similarity_score,
+                f.fts_rank,
+                bm25.bm25_rank,
+                (
+                    COALESCE({semantic_weight}::float / ({rrf_k} + s.semantic_rank), 0) +
+                    COALESCE({fts_weight}::float / ({rrf_k} + f.fts_rank), 0) +
+                    COALESCE({bm25_weight}::float / ({rrf_k} + bm25.bm25_rank), 0)
+                ) AS rrf_score
+            FROM (
+                SELECT
+                    {join_key},
+                    distance,
+                    ROW_NUMBER() OVER (ORDER BY distance) AS semantic_rank,
+                    1 - distance AS similarity_score
+                FROM (
+                    SELECT
+                        {join_key},
+                        embeddings <=> $1::vector AS distance
+                    FROM vectorize._embeddings_{job_name}
+                ) sub
+                ORDER BY distance
+                LIMIT {window_size}
+            ) s
+            FULL OUTER JOIN (
+                SELECT
+                    {join_key},
+                    ROW_NUMBER() OVER (ORDER BY ts_rank_cd(search_tokens, query) DESC) AS fts_rank
+                FROM vectorize._search_tokens_{job_name},
+                     to_tsquery('english',
+                         NULLIF(
+                             replace(plainto_tsquery('english', $2)::text, ' & ', ' | '),
+                             ''
+                         )
+                     ) AS query
+                WHERE search_tokens @@ query
+                ORDER BY ts_rank_cd(search_tokens, query) DESC
+                LIMIT {window_size}
+            ) f ON s.{join_key} = f.{join_key}
+            FULL OUTER JOIN bm25_cte bm25
+                ON COALESCE(s.{join_key}, f.{join_key}) = bm25.{join_key}
+        ) t
+        INNER JOIN {src_schema}.{src_table} t0 ON t0.{join_key} = t.{join_key}
+        {where_filter}
+        ORDER BY t.rrf_score DESC
+        LIMIT {limit}"
+    );
+
+    format!(
+        "SELECT to_jsonb(t) as results FROM ({inner}
+    ) t"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

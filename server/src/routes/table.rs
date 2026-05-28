@@ -1,7 +1,11 @@
+use std::sync::Arc;
+
 use crate::app_state::AppState;
+use crate::bm25::BM25Index;
 use crate::errors::ServerError;
 use actix_web::{HttpResponse, delete, post, web};
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use vectorize_core::init::{self, get_column_datatype};
@@ -56,6 +60,29 @@ pub async fn table(
         job_cache.insert(payload.job_name.clone(), payload.clone());
     }
 
+    // Create a BM25 index for this job and populate it in the background.
+    match BM25Index::new() {
+        Ok(idx) => {
+            let idx = Arc::new(Mutex::new(idx));
+            app_state
+                .bm25_indexes
+                .write()
+                .await
+                .insert(payload.job_name.clone(), idx.clone());
+            let pool = app_state.db_pool.clone();
+            let job = payload.clone();
+            tokio::spawn(async move {
+                crate::bm25::populate_bm25_index(&pool, &job, idx).await;
+            });
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Failed to create BM25 index for job {}: {e}",
+                payload.job_name
+            );
+        }
+    }
+
     let resp = JobResponse { id: job_id };
     Ok(HttpResponse::Ok().json(resp))
 }
@@ -95,10 +122,14 @@ pub async fn delete_table(
             _ => ServerError::from(e),
         })?;
 
-    // Remove from cache
+    // Remove from job cache and BM25 index map
     {
         let mut job_cache = app_state.job_cache.write().await;
         job_cache.remove(&job_name);
+    }
+    {
+        let mut indexes = app_state.bm25_indexes.write().await;
+        indexes.remove(&job_name);
     }
 
     let resp = DeleteJobResponse {

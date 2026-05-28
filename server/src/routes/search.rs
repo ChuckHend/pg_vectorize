@@ -26,6 +26,9 @@ pub struct SearchRequest {
     pub semantic_wt: f32,
     #[serde(default = "default_fts_wt")]
     pub fts_wt: f32,
+    /// Weight for BM25 (Tantivy) search. Defaults to 0.0 (disabled).
+    #[serde(default)]
+    pub bm25_wt: f32,
     #[serde(flatten, default)]
     pub filters: BTreeMap<String, FilterValue>,
 }
@@ -45,6 +48,9 @@ pub struct SearchRequestPOST {
     pub semantic_wt: f32,
     #[serde(default = "default_fts_wt")]
     pub fts_wt: f32,
+    /// Weight for BM25 (Tantivy) search. Defaults to 0.0 (disabled).
+    #[serde(default)]
+    pub bm25_wt: f32,
     pub filters: BTreeMap<String, FilterValue>,
 }
 
@@ -58,6 +64,7 @@ impl From<SearchRequestPOST> for SearchRequest {
             rrf_k: request.rrf_k,
             semantic_wt: request.semantic_wt,
             fts_wt: request.fts_wt,
+            bm25_wt: request.bm25_wt,
             filters: request.filters,
         }
     }
@@ -185,23 +192,79 @@ async fn search_internal(
     let embedding_request = prepare_generic_embedding_request(&vectorizejob.model, &[input]);
     let embeddings = provider.generate_embedding(&embedding_request).await?;
 
-    let q = query::hybrid_search_query(
-        &payload.job_name,
-        &vectorizejob.src_schema,
-        &vectorizejob.src_table,
-        &vectorizejob.primary_key,
-        &["*".to_string()],
-        payload.window_size,
-        payload.limit,
-        payload.rrf_k,
-        payload.semantic_wt,
-        payload.fts_wt,
-        &payload.filters,
-    );
+    // Run Tantivy BM25 search when requested.
+    let bm25_pks: Option<Vec<String>> = if payload.bm25_wt > 0.0 {
+        let indexes = app_state.bm25_indexes.read().await;
+        match indexes.get(&payload.job_name) {
+            Some(idx) => {
+                let idx = idx.lock().await;
+                match idx.search(&payload.query, payload.window_size as usize) {
+                    Ok(pks) => Some(pks),
+                    Err(e) => {
+                        tracing::warn!(
+                            "BM25 search failed for job {}, falling back: {e}",
+                            payload.job_name
+                        );
+                        None
+                    }
+                }
+            }
+            None => {
+                tracing::warn!(
+                    "BM25 index not found for job {}, ignoring bm25_wt",
+                    payload.job_name
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let (q, use_bm25) = match &bm25_pks {
+        Some(_) => (
+            query::hybrid_search_query_with_bm25(
+                &payload.job_name,
+                &vectorizejob.src_schema,
+                &vectorizejob.src_table,
+                &vectorizejob.primary_key,
+                &["*".to_string()],
+                payload.window_size,
+                payload.limit,
+                payload.rrf_k,
+                payload.semantic_wt,
+                payload.fts_wt,
+                payload.bm25_wt,
+                &payload.filters,
+            ),
+            true,
+        ),
+        None => (
+            query::hybrid_search_query(
+                &payload.job_name,
+                &vectorizejob.src_schema,
+                &vectorizejob.src_table,
+                &vectorizejob.primary_key,
+                &["*".to_string()],
+                payload.window_size,
+                payload.limit,
+                payload.rrf_k,
+                payload.semantic_wt,
+                payload.fts_wt,
+                &payload.filters,
+            ),
+            false,
+        ),
+    };
 
     let mut prepared_query = sqlx::query(&q)
         .bind(&embeddings.embeddings[0])
         .bind(&payload.query);
+
+    // $3 is the BM25 PKs array when BM25 is active; filters follow after.
+    if use_bm25 {
+        prepared_query = prepared_query.bind(bm25_pks.as_ref().unwrap());
+    }
 
     // Bind filter values
     for value in payload.filters.values() {
