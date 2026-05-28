@@ -80,6 +80,9 @@ impl AppState {
                 cache.values().cloned().collect()
             };
             for job in jobs {
+                if job.job_name.is_empty() {
+                    continue;
+                }
                 match BM25Index::new() {
                     Ok(idx) => {
                         let idx = Arc::new(Mutex::new(idx));

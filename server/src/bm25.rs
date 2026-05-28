@@ -140,6 +140,10 @@ pub async fn start_bm25_sync_task(
         };
 
         for job in &jobs {
+            if job.job_name.is_empty() {
+                continue;
+            }
+
             let since = last_synced
                 .get(&job.job_name)
                 .copied()
