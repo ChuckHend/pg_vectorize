@@ -22,13 +22,10 @@ pub async fn start_cache_sync_listener(
     let max_retry_delay = std::time::Duration::from_secs(60);
 
     loop {
-        match vectorize_core::cache::try_listen_for_changes(&db_pool, &job_cache).await {
-            Ok(_) => retry_delay = std::time::Duration::from_secs(1),
-            Err(e) => {
-                error!("Cache sync listener error: {e}. Retrying in {retry_delay:?}");
-                tokio::time::sleep(retry_delay).await;
-                retry_delay = std::cmp::min(retry_delay * 2, max_retry_delay);
-            }
+        if let Err(e) = vectorize_core::cache::try_listen_for_changes(&db_pool, &job_cache).await {
+            error!("Cache sync listener error: {e}. Retrying in {retry_delay:?}");
+            tokio::time::sleep(retry_delay).await;
+            retry_delay = std::cmp::min(retry_delay * 2, max_retry_delay);
         }
     }
 }
