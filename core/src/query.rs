@@ -213,10 +213,18 @@ pub fn create_vectorize_table() -> String {
             primary_key TEXT NOT NULL,
             update_time_col TEXT NOT NULL,
             model TEXT NOT NULL,
-            params JSONB
+            params JSONB,
+            bm25_enabled BOOLEAN NOT NULL DEFAULT false
         );
         "
     .to_string()
+}
+
+/// Idempotent upgrade for pre-existing `vectorize.job` tables created before
+/// `bm25_enabled` was added, so BM25 stays opt-in on upgrade too.
+pub fn alter_vectorize_table_add_bm25_enabled() -> String {
+    "ALTER TABLE vectorize.job ADD COLUMN IF NOT EXISTS bm25_enabled BOOLEAN NOT NULL DEFAULT false;"
+        .to_string()
 }
 
 pub fn init_index_query(job_name: &str, idx_type: &str, job_params: &JobParams) -> String {

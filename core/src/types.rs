@@ -21,6 +21,10 @@ pub struct VectorizeJob {
         serialize_with = "model_to_string"
     )]
     pub model: Model,
+    /// Opt-in flag to build and maintain an in-memory BM25 (Tantivy) index for this job.
+    /// Defaults to false so BM25 indexing never runs unless explicitly requested.
+    #[serde(default)]
+    pub bm25_enabled: bool,
 }
 
 #[allow(non_camel_case_types)]

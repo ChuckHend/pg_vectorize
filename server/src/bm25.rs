@@ -136,7 +136,11 @@ pub async fn start_bm25_sync_task(
 
         let jobs: Vec<VectorizeJob> = {
             let cache = job_cache.read().await;
-            cache.values().cloned().collect()
+            cache
+                .values()
+                .filter(|job| job.bm25_enabled)
+                .cloned()
+                .collect()
         };
 
         for job in &jobs {

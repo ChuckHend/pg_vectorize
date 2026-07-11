@@ -60,27 +60,38 @@ pub async fn table(
         job_cache.insert(payload.job_name.clone(), payload.clone());
     }
 
-    // Create a BM25 index for this job and populate it in the background.
-    match BM25Index::new() {
-        Ok(idx) => {
-            let idx = Arc::new(Mutex::new(idx));
-            app_state
-                .bm25_indexes
-                .write()
-                .await
-                .insert(payload.job_name.clone(), idx.clone());
-            let pool = app_state.db_pool.clone();
-            let job = payload.clone();
-            tokio::spawn(async move {
-                crate::bm25::populate_bm25_index(&pool, &job, idx).await;
-            });
+    // BM25 indexing is opt-in per job via `bm25_enabled`.
+    if payload.bm25_enabled {
+        // Create a BM25 index for this job and populate it in the background.
+        match BM25Index::new() {
+            Ok(idx) => {
+                let idx = Arc::new(Mutex::new(idx));
+                app_state
+                    .bm25_indexes
+                    .write()
+                    .await
+                    .insert(payload.job_name.clone(), idx.clone());
+                let pool = app_state.db_pool.clone();
+                let job = payload.clone();
+                tokio::spawn(async move {
+                    crate::bm25::populate_bm25_index(&pool, &job, idx).await;
+                });
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to create BM25 index for job {}: {e}",
+                    payload.job_name
+                );
+            }
         }
-        Err(e) => {
-            tracing::warn!(
-                "Failed to create BM25 index for job {}: {e}",
-                payload.job_name
-            );
-        }
+    } else {
+        // Job was re-created/updated with BM25 disabled; drop any stale index
+        // so it stops consuming memory and the background sync loop skips it.
+        app_state
+            .bm25_indexes
+            .write()
+            .await
+            .remove(&payload.job_name);
     }
 
     let resp = JobResponse { id: job_id };

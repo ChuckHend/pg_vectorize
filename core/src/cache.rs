@@ -103,7 +103,7 @@ pub async fn refresh_job_cache(
     job_cache: &Arc<RwLock<HashMap<String, VectorizeJob>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let all_jobs: Vec<VectorizeJob> = sqlx::query_as(
-        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model FROM vectorize.job",
+        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model, bm25_enabled FROM vectorize.job",
     )
     .fetch_all(db_pool)
     .await?;
@@ -129,7 +129,7 @@ pub async fn load_initial_job_cache(
     pool: &sqlx::PgPool,
 ) -> Result<HashMap<String, VectorizeJob>, sqlx::Error> {
     let all_jobs: Vec<VectorizeJob> = sqlx::query_as(
-        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model FROM vectorize.job",
+        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model, bm25_enabled FROM vectorize.job",
     )
     .fetch_all(pool)
     .await?;

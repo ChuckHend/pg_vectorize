@@ -70,14 +70,19 @@ impl AppState {
         }));
 
         // Create empty BM25 index map, then kick off background population for
-        // every existing job so the server stays non-blocking at startup.
+        // every job that has opted in via `bm25_enabled`, so the server stays
+        // non-blocking at startup and jobs that never asked for BM25 incur no cost.
         let bm25_indexes: Arc<RwLock<HashMap<String, Arc<Mutex<BM25Index>>>>> =
             Arc::new(RwLock::new(HashMap::new()));
 
         {
             let jobs: Vec<VectorizeJob> = {
                 let cache = job_cache.read().await;
-                cache.values().cloned().collect()
+                cache
+                    .values()
+                    .filter(|job| job.bm25_enabled)
+                    .cloned()
+                    .collect()
             };
             for job in jobs {
                 if job.job_name.is_empty() {
