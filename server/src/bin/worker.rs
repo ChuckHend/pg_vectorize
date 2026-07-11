@@ -21,6 +21,10 @@ async fn main() {
         .await
         .expect("Failed to initialize project");
 
+    vectorize_server::db::run_migrations(&pool)
+        .await
+        .expect("Failed to run migrations");
+
     let queue = pgmq::PGMQueueExt::new_with_pool(pool.clone()).await;
 
     loop {

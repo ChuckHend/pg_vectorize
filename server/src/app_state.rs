@@ -48,6 +48,10 @@ impl AppState {
             .await
             .map_err(|e| format!("Failed to initialize project: {e}"))?;
 
+        crate::db::run_migrations(&db_pool)
+            .await
+            .map_err(|e| format!("Failed to run migrations: {e}"))?;
+
         // load initial job cache
         let job_cache = cache::load_initial_job_cache(&db_pool)
             .await

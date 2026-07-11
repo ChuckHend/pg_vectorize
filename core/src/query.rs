@@ -202,31 +202,6 @@ pub fn check_input(input: &str) -> Result<()> {
     }
 }
 
-pub fn create_vectorize_table() -> String {
-    "CREATE TABLE IF NOT EXISTS vectorize.job
-        (
-            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-            job_name TEXT NOT NULL UNIQUE,
-            src_schema TEXT NOT NULL,
-            src_table TEXT NOT NULL,
-            src_columns TEXT[] NOT NULL,
-            primary_key TEXT NOT NULL,
-            update_time_col TEXT NOT NULL,
-            model TEXT NOT NULL,
-            params JSONB,
-            bm25_enabled BOOLEAN NOT NULL DEFAULT false
-        );
-        "
-    .to_string()
-}
-
-/// Idempotent upgrade for pre-existing `vectorize.job` tables created before
-/// `bm25_enabled` was added, so BM25 stays opt-in on upgrade too.
-pub fn alter_vectorize_table_add_bm25_enabled() -> String {
-    "ALTER TABLE vectorize.job ADD COLUMN IF NOT EXISTS bm25_enabled BOOLEAN NOT NULL DEFAULT false;"
-        .to_string()
-}
-
 pub fn init_index_query(job_name: &str, idx_type: &str, job_params: &JobParams) -> String {
     check_input(job_name).expect("invalid job name");
     let src_schema = job_params.schema.clone();

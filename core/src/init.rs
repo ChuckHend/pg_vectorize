@@ -74,16 +74,13 @@ async fn vectorize_schema_exists(pool: &PgPool) -> Result<bool, sqlx::Error> {
 pub async fn init_vectorize(pool: &PgPool) -> Result<(), VectorizeError> {
     if vectorize_schema_exists(pool).await? {
         log::info!("vectorize schema already exists, skipping initialization.");
-        // Backwards-compatible upgrade for installs predating the bm25_enabled column.
-        sqlx::query(&query::alter_vectorize_table_add_bm25_enabled())
-            .execute(pool)
-            .await?;
         return Ok(());
     } else {
         // these statements are critical, so we fail if they error
+        // Note: the vectorize.job table itself is created/evolved via the
+        // vectorize-server crate's sqlx migrations (server/migrations), not here.
         let statements_nofail = vec![
             "CREATE SCHEMA IF NOT EXISTS vectorize;".to_string(),
-            query::create_vectorize_table(),
             query::handle_table_update(),
             query::create_batch_texts_fn(),
         ];
