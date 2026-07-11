@@ -291,8 +291,8 @@ async fn get_vectorize_job(
     job_name: &str,
 ) -> Result<VectorizeJob, ServerError> {
     match sqlx::query(
-        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model 
-         FROM vectorize.job 
+        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model, bm25_enabled
+         FROM vectorize.job
          WHERE job_name = $1",
     )
     .bind(job_name)
