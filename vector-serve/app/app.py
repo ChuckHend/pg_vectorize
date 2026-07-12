@@ -1,4 +1,5 @@
-from typing import Callable
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 import logging
 
 from fastapi import FastAPI
@@ -15,7 +16,15 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 logging.basicConfig(level=logging.DEBUG)
 
-app = FastAPI(title="Embedding-Service")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    logging.info("Running app start handler.")
+    load_model_cache(app)
+    yield
+
+
+app = FastAPI(title="Embedding-Service", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,17 +36,6 @@ app.add_middleware(
 app.include_router(transform_router)
 app.include_router(info_router)
 app.include_router(health_router)
-
-
-def start_app_handler(app: FastAPI) -> Callable:
-    def startup() -> None:
-        logging.info("Running app start handler.")
-        load_model_cache(app)
-
-    return startup
-
-
-app.add_event_handler("startup", start_app_handler(app))
 
 instrumentator = Instrumentator().instrument(app)
 instrumentator.expose(app)
