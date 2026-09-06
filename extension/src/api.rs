@@ -30,9 +30,13 @@ fn chunk_table(
         primary_key, column_name, input_table
     ); // Use primary_key instead of hardcoding "id"
 
-    // Reverting back to use get_two
-    let (id_opt, text_opt): (Option<i32>, Option<String>) = Spi::get_two(&query)?;
-    let rows = vec![(id_opt, text_opt)]; // Wrap in a vector if needed
+    let rows = Spi::connect_mut(|client| {
+        client
+            .update(&query, None, &[])?
+            .into_iter()
+            .map(|row| Ok((row.get::<i32>(1)?, row.get::<String>(2)?)))
+            .collect::<Result<Vec<_>, spi::Error>>()
+    })?;
 
     // Prepare to hold chunked rows
     let mut chunked_rows: Vec<(i32, i32, String)> = Vec::new(); // (original_id, chunk_index, chunk)
