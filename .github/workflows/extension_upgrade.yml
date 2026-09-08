@@ -11,6 +11,7 @@ on:
       - main
     paths:
       - ".github/workflows/extension_upgrade.yml"
+      - ".github/actions/pgx-init/**"
       - "extension/**"
 
 jobs:
@@ -40,42 +41,36 @@ jobs:
             /home/runner/.pgrx
       - name: Get current version
         id: current-version
-        run: echo "CI_BRANCH=$(git name-rev --name-only HEAD)" >> $GITHUB_OUTPUT
+        run: echo "CI_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Install sys dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y postgresql-server-dev-16 libopenblas-dev libreadline-dev
       - uses: ./.github/actions/pgx-init
         with:
           working-directory: ./extension
+          pg-version: pg17
       - name: Install project dependencies
         run: |
-          make setup
+          make setup PG_VERSION=17
       - name: Test previous version (v0.20.0)
-        env:
-          HF_API_KEY: ${{ secrets.HF_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CO_API_KEY: ${{ secrets.CO_API_KEY }}
         run: |
           git fetch --tags
           git checkout tags/v0.20.0
           # pgrx=0.12.5 required for v0.20.0
           cargo install cargo-pgrx --version 0.12.5 --locked
-          cargo pgrx install --pg-config $(cargo pgrx info pg-config pg18)
-          # use integration tests for v0.20.0
-          make test-integration
+          cargo pgrx install --pg-config "$(cargo pgrx info pg-config pg17)"
+          # Seed the persistent upgrade fixture using the local embedding service.
+          make test-integration PG_VERSION=17 TEST_NAME=test_static
       - name: Test branch's version
         env:
-          CI_BRANCH: ${{ steps.current-version.outputs.CI_BRANCH }}
-          HF_API_KEY: ${{ secrets.HF_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CO_API_KEY: ${{ secrets.CO_API_KEY }}
+          CI_COMMIT: ${{ steps.current-version.outputs.CI_COMMIT }}
         run: |
-          git checkout $CI_BRANCH
-          make test-update
+          git checkout "$CI_COMMIT"
+          make test-update PG_VERSION=17
       - name: Debugging information
         if: always()
         env:
-          CI_BRANCH: ${{ steps.current-version.outputs.CI_BRANCH }}
+          CI_COMMIT: ${{ steps.current-version.outputs.CI_COMMIT }}
         run: |
-          git checkout $CI_BRANCH
-          make cat-logs
+          git checkout "$CI_COMMIT"
+          make cat-logs PG_VERSION=17
