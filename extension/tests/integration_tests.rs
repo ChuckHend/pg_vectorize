@@ -1025,71 +1025,10 @@ async fn test_event_trigger_on_table_drop() {
 #[tokio::test]
 async fn test_chunk_table() {
     let conn = common::init_database().await;
-    let test_table_name = "chunk_test_table";
-    let output_table_name = "chunked_data";
-
-    // Drop the test table if it exists
-    let drop_table_query = format!("DROP TABLE IF EXISTS {}", test_table_name);
-    sqlx::query(&drop_table_query)
+    sqlx::raw_sql(include_str!("chunk_table.sql"))
         .execute(&conn)
         .await
-        .expect("failed to drop test table");
-
-    // Drop the output table if it exists
-    let drop_output_table_query = format!("DROP TABLE IF EXISTS {}", output_table_name);
-    sqlx::query(&drop_output_table_query)
-        .execute(&conn)
-        .await
-        .expect("failed to drop output table");
-
-    // Create a test table and insert data
-    let create_table_query = format!(
-        "CREATE TABLE {} (id SERIAL PRIMARY KEY, text_column TEXT)",
-        test_table_name
-    );
-    sqlx::query(&create_table_query)
-        .execute(&conn)
-        .await
-        .expect("failed to create test table");
-
-    let insert_data_query = format!(
-        "INSERT INTO {} (text_column) VALUES ('This is a test string that will be chunked into smaller pieces.')",
-        test_table_name
-    );
-    sqlx::query(&insert_data_query)
-        .execute(&conn)
-        .await
-        .expect("failed to insert data into test table");
-
-    // Call the chunk_table function with the primary key parameter
-    let chunk_table_query = format!(
-        "SELECT vectorize.chunk_table('{}', 'text_column', 'id', 10, '{}')",
-        test_table_name, output_table_name
-    );
-    sqlx::query(&chunk_table_query)
-        .execute(&conn)
-        .await
-        .expect("failed to chunk table");
-
-    // Verify the chunked data
-    let select_query = format!(
-        "SELECT original_id, chunk_index, chunk FROM {}",
-        output_table_name
-    );
-    let rows: Vec<(i32, i32, String)> = sqlx::query_as(&select_query)
-        .fetch_all(&conn)
-        .await
-        .expect("failed to select chunked data");
-
-    assert_eq!(rows.len(), 8);
-    assert_eq!(rows[0].2, "This is a");
-    assert_eq!(rows[1].2, "test");
-    assert_eq!(rows[2].2, "string");
-    assert_eq!(rows[3].2, "that will");
-    assert_eq!(rows[4].2, "be chunked");
-    assert_eq!(rows[5].2, "into");
-    assert_eq!(rows[6].2, "smaller");
-    assert_eq!(rows[7].2, "pieces.");
+        .expect("chunk_table SQL regressions failed");
 }
 
 #[tokio::test]
@@ -1376,6 +1315,7 @@ async fn test_table_from() {
 
     // Test cron scheduling
     let cron_job_name = format!("table_from_test_cron_{}", test_num);
+    let mut cron_tx = conn.begin().await.expect("failed to begin cron setup");
     sqlx::query(&format!(
         "SELECT vectorize.table_from(
             relation => '{}',
@@ -1390,9 +1330,18 @@ async fn test_table_from() {
         )",
         dest_table_name, cron_job_name, src_table_name
     ))
-    .execute(&conn)
+    .execute(&mut *cron_tx)
     .await
     .expect("failed to create table from embeddings with cron schedule");
+
+    // Publish the cron job in a paused state so a minute boundary cannot race
+    // the assertion that only the realtime job processes the new row.
+    sqlx::query("SELECT cron.alter_job(jobid, active := false) FROM cron.job WHERE jobname = $1")
+        .bind(&cron_job_name)
+        .fetch_one(&mut *cron_tx)
+        .await
+        .expect("failed to pause the registered cron job");
+    cron_tx.commit().await.expect("failed to commit cron setup");
 
     // Verify embeddings were imported correctly for both jobs
     let realtime_count: i64 = sqlx::query_scalar(&format!(
@@ -1431,23 +1380,30 @@ async fn test_table_from() {
     .await
     .expect("failed to insert new record");
 
-    // Wait for realtime update to process
-    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-
-    // Verify the new record was processed for realtime job
-    let new_realtime_count: i64 = sqlx::query_scalar(&format!(
-        "SELECT COUNT(*) FROM vectorize._embeddings_{}",
-        realtime_job_name
-    ))
-    .fetch_one(&conn)
+    // Wait for the worker instead of assuming a fixed processing time.
+    let new_realtime_count = tokio::time::timeout(tokio::time::Duration::from_secs(30), async {
+        loop {
+            let count: i64 = sqlx::query_scalar(&format!(
+                "SELECT COUNT(*) FROM vectorize._embeddings_{}",
+                realtime_job_name
+            ))
+            .fetch_one(&conn)
+            .await
+            .expect("failed to count embeddings after update");
+            if count >= 3 {
+                break count;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+    })
     .await
-    .expect("failed to count embeddings after update");
+    .expect("timed out waiting for the realtime embedding");
     assert_eq!(
         new_realtime_count, 3,
         "Expected 3 embeddings after update in realtime job"
     );
 
-    // The cron job should still have the original count
+    // The paused cron job should still have the original count.
     let new_cron_count: i64 = sqlx::query_scalar(&format!(
         "SELECT COUNT(*) FROM vectorize._embeddings_{}",
         cron_job_name

@@ -91,10 +91,10 @@ install-vectorscale:
 
 test-integration:
 	echo "\q" | make run
-	cargo test ${TEST_NAME} -- --ignored --test-threads=1 --nocapture
+	cargo test --no-default-features --features pg${PG_VERSION} ${TEST_NAME} -- --ignored --test-threads=1 --nocapture
 
 test-unit:
-	cargo test ${TEST_NAME} -- --test-threads=1 --nocapture
+	cargo test --no-default-features --features pg${PG_VERSION} ${TEST_NAME} -- --test-threads=1 --nocapture
 
 test-version:
 	git fetch --tags
@@ -108,4 +108,6 @@ test-update:
 	echo "\q" | make run
 	psql ${DATABASE_URL} -c "CREATE EXTENSION IF NOT EXISTS vectorscale"
 	psql ${DATABASE_URL} -c "ALTER EXTENSION vectorize UPDATE"
+	# Check the retained fixture before other tests recreate the extension.
+	psql ${DATABASE_URL} -X -v ON_ERROR_STOP=1 -f tests/upgrade.sql
 	make test-unit
