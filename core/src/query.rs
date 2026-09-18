@@ -736,9 +736,9 @@ fn hybrid_search_rows_sql(
                         {join_key},
                         embeddings <=> $1::vector as distance
                     FROM vectorize._embeddings_{job_name}
+                    ORDER BY embeddings <=> $1::vector
+                    LIMIT {window_size}
                 ) sub
-                ORDER BY distance
-                LIMIT {window_size}
             ) s
             FULL OUTER JOIN (
                 SELECT
@@ -909,9 +909,9 @@ pub fn hybrid_search_query_with_bm25(
                         {join_key},
                         embeddings <=> $1::vector AS distance
                     FROM vectorize._embeddings_{job_name}
+                    ORDER BY embeddings <=> $1::vector
+                    LIMIT {window_size}
                 ) sub
-                ORDER BY distance
-                LIMIT {window_size}
             ) s
             FULL OUTER JOIN (
                 SELECT
