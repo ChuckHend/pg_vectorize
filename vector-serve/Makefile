@@ -1,24 +1,24 @@
 SOURCE_OBJECTS=app
 
 format:
-	uv run ruff check --silent --fix --exit-zero ${SOURCE_OBJECTS}
+	uv run --no-sync ruff check --silent --fix --exit-zero ${SOURCE_OBJECTS}
 
 download.models:
-	uv run python -m app.models
+	uv run --no-sync python -m app.models
 
 run: download.models
-	uv run fastapi run app/app.py --host 0.0.0.0 --port 3000 --workers 1
+	uv run --no-sync fastapi run app/app.py --host 0.0.0.0 --port 3000 --workers 1
 
 run.docker:
 	docker build -t vector-serve .
 	docker run -p 3000:3000 vector-serve
 
 test:
-	uv run pytest
+	uv run --no-sync pytest
 
 setup:
 	curl -LsSf https://astral.sh/uv/install.sh | sh
-	uv sync
+	uv sync --extra cpu
 
 check:
-	uv run ruff check ${SOURCE_OBJECTS}
+	uv run --no-sync ruff check ${SOURCE_OBJECTS}
