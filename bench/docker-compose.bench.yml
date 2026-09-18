@@ -1,0 +1,27 @@
+# Overlay for load testing: scales vector-serve to 2 replicas behind an
+# nginx load balancer, since the upstream image runs a single CPU-bound
+# worker per container (vector-serve/Dockerfile: `--workers 1`).
+#
+# Usage (from the repo root):
+#   docker compose -f docker-compose.yml -f bench/docker-compose.bench.yml up -d
+services:
+  server:
+    environment:
+      EMBEDDING_SVC_URL: http://vector-serve-lb:3000/v1
+
+  vector-serve-2:
+    restart: always
+    image: ghcr.io/chuckhend/vector-serve:latest
+    environment:
+      HF_API_KEY: ${HF_API_KEY}
+
+  vector-serve-lb:
+    restart: always
+    image: nginx:1.27-alpine
+    depends_on:
+      - vector-serve
+      - vector-serve-2
+    volumes:
+      - ./bench/vector-serve-lb.nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - 3001:3000
