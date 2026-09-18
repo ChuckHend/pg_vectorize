@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import TYPE_CHECKING, Any, List
+from typing import TYPE_CHECKING, List
 
 from app.models import model_org_name, get_model, parse_header
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -11,7 +11,11 @@ router = APIRouter(tags=["transform"])
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL)
 
-BATCH_SIZE = int(os.getenv("BATCH_SIZE", 1000))
+# Inference batch size passed straight through to SentenceTransformer.encode(),
+# which does its own internal chunking (and sorts inputs by length first to
+# minimize padding waste across the whole request) -- so this controls the
+# actual model batch size, not an outer Python-level loop.
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", 32))
 
 
 if TYPE_CHECKING:
@@ -41,9 +45,6 @@ def batch_transform(
     request: Request, payload: Batch, authorization: str = Header(None)
 ) -> ResponseModel:
     logging.info({"batch-predict-len": len(payload.input)})
-    batches = chunk_list(payload.input, BATCH_SIZE)
-    num_batches = len(batches)
-    responses: list[list[float]] = []
 
     requested_model = model_org_name(payload.model)
 
@@ -60,26 +61,16 @@ def batch_transform(
             detail=f"Unable to load {payload.model} -- {e}",
         )
 
-    for idx, batch in enumerate(batches):
-        logging.info(f"Batch {idx} / {num_batches}")
-        responses.extend(
-            model.encode(
-                sentences=batch, normalize_embeddings=payload.normalize
-            ).tolist()
-        )
-    logging.info("Completed %s batches", num_batches)
+    vectors = model.encode(
+        sentences=payload.input,
+        batch_size=BATCH_SIZE,
+        normalize_embeddings=payload.normalize,
+        show_progress_bar=False,
+    ).tolist()
     embeds = [
-        Embedding(embedding=embedding, index=i) for i, embedding in enumerate(responses)
+        Embedding(embedding=embedding, index=i) for i, embedding in enumerate(vectors)
     ]
     return ResponseModel(
         data=embeds,
         model=requested_model,
     )
-
-
-def chunk_list(lst: List[Any], chunk_size: int) -> List[List[Any]]:
-    """Split a list into smaller lists of equal length, except the last one."""
-    chunks = []
-    for i in range(0, len(lst), chunk_size):
-        chunks.append(lst[i : i + chunk_size])
-    return chunks

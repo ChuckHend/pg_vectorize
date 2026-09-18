@@ -1,7 +1,10 @@
+from app.threading_config import THREADS_PER_WORKER  # noqa: I001 -- must precede any torch/tokenizers import
+
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 import logging
 
+import torch
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,6 +18,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 
 logging.basicConfig(level=logging.DEBUG)
+
+torch.set_num_threads(THREADS_PER_WORKER)
 
 
 @asynccontextmanager

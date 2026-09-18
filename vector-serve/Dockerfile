@@ -37,4 +37,4 @@ RUN uv venv --python "${PYTHON_VERSION}" && \
     uv run python -m app.models && \
     uv cache clean
 
-CMD ["fastapi", "run", "app/app.py", "--host", "0.0.0.0", "--port", "3000", "--workers", "1"]
+CMD ["python", "-m", "app.server"]
