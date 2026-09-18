@@ -1,4 +1,3 @@
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -6,7 +5,7 @@ use super::{
     GenericEmbeddingResponse,
 };
 use crate::errors::VectorizeError;
-use crate::transformers::http_handler::handle_response;
+use crate::transformers::http_handler::{HTTP_CLIENT, handle_response};
 use crate::transformers::providers;
 use crate::transformers::types::Inputs;
 use async_trait::async_trait;
@@ -84,7 +83,6 @@ impl EmbeddingProvider for OpenAIProvider {
         &self,
         request: &'a GenericEmbeddingRequest,
     ) -> Result<GenericEmbeddingResponse, VectorizeError> {
-        let client = Client::new();
         let req = OpenAIEmbeddingBody::from(request.clone());
         let num_inputs = request.input.len();
         let todo_requests: Vec<OpenAIEmbeddingBody> = if num_inputs > 2048 {
@@ -104,7 +102,7 @@ impl EmbeddingProvider for OpenAIProvider {
         for request_payload in todo_requests.iter() {
             let payload_val = serde_json::to_value(request_payload)?;
             let embeddings_url = format!("{}/embeddings", self.url);
-            let response = client
+            let response = HTTP_CLIENT
                 .post(&embeddings_url)
                 .timeout(std::time::Duration::from_secs(120_u64))
                 .header("Accept", "application/json")
@@ -143,13 +141,12 @@ impl OpenAIProvider {
         model_name: String,
         messages: &[ChatMessageRequest],
     ) -> Result<String, VectorizeError> {
-        let client = Client::new();
         let chat_url = format!("{}/chat/completions", self.url);
         let message = serde_json::json!({
             "model": model_name,
             "messages": messages,
         });
-        let response = client
+        let response = HTTP_CLIENT
             .post(&chat_url)
             .timeout(std::time::Duration::from_secs(120_u64))
             .header("Accept", "application/json")

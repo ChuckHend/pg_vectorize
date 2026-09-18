@@ -1,9 +1,8 @@
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use super::{EmbeddingProvider, GenericEmbeddingRequest, GenericEmbeddingResponse};
 use crate::errors::VectorizeError;
-use crate::transformers::http_handler::handle_response;
+use crate::transformers::http_handler::{HTTP_CLIENT, handle_response};
 use async_trait::async_trait;
 use std::env;
 
@@ -78,12 +77,10 @@ impl EmbeddingProvider for VoyageProvider {
         &self,
         request: &'a GenericEmbeddingRequest,
     ) -> Result<GenericEmbeddingResponse, VectorizeError> {
-        let client = Client::new();
-
         let req_body = VoyageEmbeddingBody::from(request.clone());
         let embedding_url = format!("{}/embeddings", self.url);
 
-        let response = client
+        let response = HTTP_CLIENT
             .post(&embedding_url)
             .timeout(std::time::Duration::from_secs(120_u64))
             .header("Content-Type", "application/json")

@@ -1,9 +1,8 @@
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use super::{EmbeddingProvider, GenericEmbeddingRequest, GenericEmbeddingResponse};
 use crate::errors::VectorizeError;
-use crate::transformers::http_handler::handle_response;
+use crate::transformers::http_handler::{HTTP_CLIENT, handle_response};
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
@@ -78,12 +77,10 @@ impl EmbeddingProvider for CohereProvider {
         &self,
         request: &'a GenericEmbeddingRequest,
     ) -> Result<GenericEmbeddingResponse, VectorizeError> {
-        let client = Client::new();
-
         let payload = CohereEmbeddingBody::from(request.clone());
         let payload_val = serde_json::to_value(payload)?;
         let embeddings_url = format!("{}/embed", self.url);
-        let response = client
+        let response = HTTP_CLIENT
             .post(&embeddings_url)
             .timeout(std::time::Duration::from_secs(120_u64))
             .header("Accept", "application/json")

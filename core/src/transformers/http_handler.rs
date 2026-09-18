@@ -1,5 +1,11 @@
 use crate::errors::VectorizeError;
 use crate::transformers::types::{Inputs, PairedEmbeddings};
+use std::sync::LazyLock;
+
+/// Shared client for all embedding-provider HTTP calls. `reqwest::Client` holds
+/// its own connection pool, so constructing a new one per request (as opposed to
+/// reusing this) throws away keep-alive and adds real per-request overhead.
+pub static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
 pub async fn handle_response<T: for<'de> serde::Deserialize<'de>>(
     resp: reqwest::Response,
