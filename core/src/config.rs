@@ -18,6 +18,10 @@ pub fn check_input(input: &str) -> Result<()> {
 
 #[derive(Debug, Clone)]
 pub struct Config {
+    /// run the embedding worker inside the server process
+    pub worker_enabled: bool,
+    /// port for the standalone vectorize-worker's health endpoint
+    pub worker_health_port: u16,
     pub proxy_enabled: bool,
     pub vectorize_proxy_port: u16,
     pub database_url: String,
@@ -61,6 +65,12 @@ impl Config {
             .unwrap_or(derived_cache_pool_default);
 
         Config {
+            worker_enabled: env::var("VECTORIZE_WORKER_ENABLED")
+                .map(|v| parse_bool_flexible(&v))
+                .unwrap_or(true),
+            worker_health_port: from_env_default("WORKER_HEALTH_PORT", "8081")
+                .parse()
+                .unwrap(),
             proxy_enabled: env::var("VECTORIZE_PROXY_ENABLED")
                 .map(|v| parse_bool_flexible(&v))
                 .unwrap_or(false),

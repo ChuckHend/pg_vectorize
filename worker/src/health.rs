@@ -34,6 +34,35 @@ impl Default for WorkerHealth {
     }
 }
 
+impl WorkerHealth {
+    /// Whether a health endpoint should answer 200. A busy worker does not heartbeat
+    /// while it waits on a slow embedding batch, so `Healthy` is not aged out here.
+    pub fn is_up(&self) -> bool {
+        match &self.status {
+            WorkerStatus::Healthy => true,
+            WorkerStatus::Starting => {
+                self.last_heartbeat.elapsed().unwrap_or_default().as_secs() < 120
+            }
+            _ => false,
+        }
+    }
+
+    /// The `worker` object of a health response.
+    pub fn report(&self) -> serde_json::Value {
+        serde_json::json!({
+            "status": format!("{:?}", self.status),
+            "last_heartbeat": self.last_heartbeat
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            "jobs_processed": self.jobs_processed,
+            "uptime_seconds": self.uptime.as_secs(),
+            "restart_count": self.restart_count,
+            "last_error": self.last_error
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkerHealthMonitor {
     health: Arc<RwLock<WorkerHealth>>,
@@ -140,6 +169,27 @@ mod tests {
         let health = shared.read().await;
         assert!(matches!(health.status, WorkerStatus::Healthy));
         assert_eq!(health.jobs_processed, 1);
+    }
+
+    #[test]
+    fn is_up_by_status() {
+        let mut health = WorkerHealth::default();
+        assert!(health.is_up());
+
+        health.last_heartbeat = SystemTime::now() - Duration::from_secs(121);
+        assert!(!health.is_up(), "stuck in Starting");
+
+        health.status = WorkerStatus::Healthy;
+        assert!(
+            health.is_up(),
+            "Healthy is not aged out during a long batch"
+        );
+
+        health.status = WorkerStatus::Error("boom".to_string());
+        assert!(!health.is_up());
+
+        health.status = WorkerStatus::Dead;
+        assert!(!health.is_up());
     }
 
     #[tokio::test]

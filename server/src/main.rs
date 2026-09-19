@@ -1,7 +1,7 @@
 use actix_cors::Cors;
 use actix_web::{App, HttpServer, middleware, web};
 use std::time::Duration;
-use tracing::error;
+use tracing::{error, info};
 
 use vectorize_core::config::Config;
 use vectorize_proxy::start_postgres_proxy;
@@ -33,23 +33,28 @@ async fn main() {
         });
     }
 
-    // start the vectorize worker with health monitoring
-    let worker_state = app_state.clone();
-    // share AppState's health object so /health reflects the worker's status
-    let worker_health_monitor =
-        WorkerHealthMonitor::with_shared_health(app_state.worker_health.clone());
+    // start the vectorize worker with health monitoring, unless it runs as its own
+    // process (VECTORIZE_WORKER_ENABLED=false with the vectorize-worker binary)
+    if app_state.config.worker_enabled {
+        let worker_state = app_state.clone();
+        // share AppState's health object so /health reflects the worker's status
+        let worker_health_monitor =
+            WorkerHealthMonitor::with_shared_health(app_state.worker_health.clone());
 
-    tokio::spawn(async move {
-        if let Err(e) = start_vectorize_worker_with_monitoring(
-            worker_state.config.clone(),
-            worker_state.db_pool.clone(),
-            worker_health_monitor,
-        )
-        .await
-        {
-            error!("Failed to start vectorize worker: {e}");
-        }
-    });
+        tokio::spawn(async move {
+            if let Err(e) = start_vectorize_worker_with_monitoring(
+                worker_state.config.clone(),
+                worker_state.db_pool.clone(),
+                worker_health_monitor,
+            )
+            .await
+            {
+                error!("Failed to start vectorize worker: {e}");
+            }
+        });
+    } else {
+        info!("in-process worker disabled; run vectorize-worker separately to process jobs");
+    }
 
     // store values before moving app_state
     let server_workers = app_state.config.num_server_workers;
