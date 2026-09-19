@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from typing import TYPE_CHECKING, List
 
 from app.models import model_org_name, get_model, parse_header
@@ -16,6 +17,12 @@ logging.basicConfig(level=LOG_LEVEL)
 # minimize padding waste across the whole request) -- so this controls the
 # actual model batch size, not an outer Python-level loop.
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", 32))
+
+# Serialize encode() per worker process. encode() is CPU-bound, so async/threads
+# don't add throughput, and concurrent calls each start their own torch/OpenMP
+# thread team. Those threads spin while waiting, so a few overlapping requests
+# oversubscribe the CPU and latency collapses.
+_ENCODE_LOCK = threading.Lock()
 
 
 if TYPE_CHECKING:
@@ -61,12 +68,13 @@ def batch_transform(
             detail=f"Unable to load {payload.model} -- {e}",
         )
 
-    vectors = model.encode(
-        sentences=payload.input,
-        batch_size=BATCH_SIZE,
-        normalize_embeddings=payload.normalize,
-        show_progress_bar=False,
-    ).tolist()
+    with _ENCODE_LOCK:
+        vectors = model.encode(
+            sentences=payload.input,
+            batch_size=BATCH_SIZE,
+            normalize_embeddings=payload.normalize,
+            show_progress_bar=False,
+        ).tolist()
     embeds = [
         Embedding(embedding=embedding, index=i) for i, embedding in enumerate(vectors)
     ]
