@@ -82,7 +82,7 @@ impl EmbeddingProvider for VoyageProvider {
 
         let response = HTTP_CLIENT
             .post(&embedding_url)
-            .timeout(std::time::Duration::from_secs(120_u64))
+            .timeout(crate::config::embedding_request_timeout())
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&req_body)

@@ -66,7 +66,7 @@ impl EmbeddingProvider for PortkeyProvider {
             let payload_val = serde_json::to_value(request_payload)?;
             let response = HTTP_CLIENT
                 .post(&embeddings_url)
-                .timeout(std::time::Duration::from_secs(120_u64))
+                .timeout(crate::config::embedding_request_timeout())
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
                 .header("x-portkey-virtual-key", self.virtual_key.clone())

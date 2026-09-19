@@ -1,4 +1,5 @@
 use std::env;
+use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 
@@ -24,7 +25,7 @@ pub struct Config {
     pub embedding_svc_url: String,
     pub openai_api_key: Option<String>,
     pub ollama_svc_url: String,
-    pub embedding_request_timeout: i32,
+    pub embedding_request_timeout: u64,
     pub poll_interval: u64,
     pub poll_interval_error: u64,
     pub max_retries: i32,
@@ -77,9 +78,7 @@ impl Config {
             ),
             openai_api_key: env::var("OPENAI_API_KEY").ok(),
             ollama_svc_url: from_env_default("OLLAMA_SVC_URL", "http://localhost:3001"),
-            embedding_request_timeout: from_env_default("EMBEDDING_REQUEST_TIMEOUT", "6")
-                .parse()
-                .unwrap(),
+            embedding_request_timeout: embedding_request_timeout().as_secs(),
             // time to wait between polling for job when there are no messages in queue
             poll_interval: from_env_default("POLL_INTERVAL", "2").parse().unwrap(),
             // time to wait between polling for job when there has been an error in processing
@@ -93,6 +92,15 @@ impl Config {
             database_cache_pool_max,
         }
     }
+}
+
+/// timeout, in seconds, for each HTTP request to an embedding provider
+pub fn embedding_request_timeout() -> Duration {
+    Duration::from_secs(
+        from_env_default("EMBEDDING_REQUEST_TIMEOUT", "120")
+            .parse()
+            .unwrap(),
+    )
 }
 
 /// source a variable from environment - use default if not exists

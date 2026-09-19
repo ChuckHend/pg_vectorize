@@ -35,7 +35,9 @@ async fn main() {
 
     // start the vectorize worker with health monitoring
     let worker_state = app_state.clone();
-    let worker_health_monitor = WorkerHealthMonitor::new();
+    // share AppState's health object so /health reflects the worker's status
+    let worker_health_monitor =
+        WorkerHealthMonitor::with_shared_health(app_state.worker_health.clone());
 
     tokio::spawn(async move {
         if let Err(e) = start_vectorize_worker_with_monitoring(

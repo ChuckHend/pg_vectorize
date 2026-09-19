@@ -48,8 +48,14 @@ impl Default for WorkerHealthMonitor {
 
 impl WorkerHealthMonitor {
     pub fn new() -> Self {
+        Self::with_shared_health(Arc::new(RwLock::new(WorkerHealth::default())))
+    }
+
+    /// Monitor that updates an existing health object, so another component (e.g. the
+    /// server's /health route) can read what the worker reports.
+    pub fn with_shared_health(health: Arc<RwLock<WorkerHealth>>) -> Self {
         Self {
-            health: Arc::new(RwLock::new(WorkerHealth::default())),
+            health,
             start_time: SystemTime::now(),
         }
     }
@@ -82,6 +88,14 @@ impl WorkerHealthMonitor {
         health.uptime = self.start_time.elapsed().unwrap_or_default();
     }
 
+    /// Clear a transient `Error` status after a successful poll. Other statuses are left alone.
+    pub async fn recover(&self) {
+        let mut health = self.health.write().await;
+        if matches!(health.status, WorkerStatus::Error(_)) {
+            health.status = WorkerStatus::Healthy;
+        }
+    }
+
     pub async fn increment_restart(&self) {
         let mut health = self.health.write().await;
         health.restart_count += 1;
@@ -108,5 +122,42 @@ impl WorkerHealthMonitor {
 
     pub fn get_arc_clone(&self) -> Arc<RwLock<WorkerHealth>> {
         Arc::clone(&self.health)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn shared_health_is_visible_to_reader() {
+        let shared = Arc::new(RwLock::new(WorkerHealth::default()));
+        let monitor = WorkerHealthMonitor::with_shared_health(shared.clone());
+
+        monitor.set_status(WorkerStatus::Healthy).await;
+        monitor.job_processed().await;
+
+        let health = shared.read().await;
+        assert!(matches!(health.status, WorkerStatus::Healthy));
+        assert_eq!(health.jobs_processed, 1);
+    }
+
+    #[tokio::test]
+    async fn recover_clears_error_only() {
+        let monitor = WorkerHealthMonitor::new();
+
+        monitor.set_error("boom".to_string()).await;
+        monitor.recover().await;
+        assert!(matches!(
+            monitor.get_health().await.status,
+            WorkerStatus::Healthy
+        ));
+
+        monitor.set_status(WorkerStatus::Dead).await;
+        monitor.recover().await;
+        assert!(matches!(
+            monitor.get_health().await.status,
+            WorkerStatus::Dead
+        ));
     }
 }

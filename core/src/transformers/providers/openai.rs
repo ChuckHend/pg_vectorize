@@ -104,7 +104,7 @@ impl EmbeddingProvider for OpenAIProvider {
             let embeddings_url = format!("{}/embeddings", self.url);
             let response = HTTP_CLIENT
                 .post(&embeddings_url)
-                .timeout(std::time::Duration::from_secs(120_u64))
+                .timeout(crate::config::embedding_request_timeout())
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", self.api_key))
