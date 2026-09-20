@@ -172,7 +172,7 @@ pub fn call_chat_completions(
                     guc_configs.service_url.clone(),
                     guc_configs.api_key.clone(),
                     guc_configs.virtual_key.clone(),
-                );
+                )?;
                 provider
                     .generate_response(model.api_name(), &messages)
                     .await

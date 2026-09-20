@@ -56,13 +56,12 @@ impl VoyageProvider {
         };
         let final_api_key = match api_key {
             Some(api_key) => api_key,
-            None => match env::var("VOYAGE_API_KEY") {
-                Ok(key) => key,
-                Err(e) => {
-                    log::error!("VOYAGE_API_KEY environment variable is not set.");
-                    Err(e)?
-                }
-            },
+            None => {
+                env::var("VOYAGE_API_KEY").map_err(|_| VectorizeError::ProviderNotConfigured {
+                    provider: "voyage".to_string(),
+                    env_var: "VOYAGE_API_KEY".to_string(),
+                })?
+            }
         };
         Ok(VoyageProvider {
             url: final_url,

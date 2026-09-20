@@ -70,6 +70,10 @@ impl ResponseError for ServerError {
         let resp = match self {
             ServerError::InvalidRequest(_) => ErrorResponse::BadRequest(self.to_string()),
             ServerError::NotFoundError(_) => ErrorResponse::NotFound(self.to_string()),
+            // misconfiguration the operator has to fix: say which provider and variable
+            ServerError::VectorizeError(
+                e @ errors::VectorizeError::ProviderNotConfigured { .. },
+            ) => ErrorResponse::InternalServerError(e.to_string()),
             _ => ErrorResponse::InternalServerError(
                 "Internal Server Error. Check server logs".to_string(),
             ),
@@ -103,4 +107,26 @@ pub fn make_json_config() -> JsonConfig {
 
         InternalError::from_response(error, response).into()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::body::to_bytes;
+
+    #[actix_web::test]
+    async fn missing_provider_credentials_name_the_provider_and_variable() {
+        let err = ServerError::from(errors::VectorizeError::ProviderNotConfigured {
+            provider: "openai".to_string(),
+            env_var: "OPENAI_API_KEY".to_string(),
+        });
+        assert_eq!(err.status_code(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let body = to_bytes(err.error_response().into_body()).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            body["error"],
+            "embedding provider 'openai' is not configured: OPENAI_API_KEY is not set"
+        );
+    }
 }

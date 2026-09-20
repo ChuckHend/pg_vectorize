@@ -58,17 +58,20 @@ impl OpenAIProvider {
     pub fn new(url: Option<String>, api_key: Option<String>) -> Result<Self, VectorizeError> {
         let final_url = match url {
             Some(url) => url,
-            None => OPENAI_BASE_URL.to_string(),
+            // point at an OpenAI-compatible gateway or proxy; unset or empty means OpenAI
+            None => env::var("OPENAI_BASE_URL")
+                .ok()
+                .filter(|u| !u.is_empty())
+                .unwrap_or_else(|| OPENAI_BASE_URL.to_string()),
         };
         let final_api_key = match api_key {
             Some(api_key) => api_key,
-            None => match env::var("OPENAI_API_KEY") {
-                Ok(key) => key,
-                Err(e) => {
-                    log::error!("OPENAI_API_KEY environment variable is not set");
-                    Err(e)?
-                }
-            },
+            None => {
+                env::var("OPENAI_API_KEY").map_err(|_| VectorizeError::ProviderNotConfigured {
+                    provider: "openai".to_string(),
+                    env_var: "OPENAI_API_KEY".to_string(),
+                })?
+            }
         };
         Ok(OpenAIProvider {
             url: final_url,
@@ -122,7 +125,22 @@ impl EmbeddingProvider for OpenAIProvider {
     }
 
     async fn model_dim(&self, model_name: &str) -> Result<u32, VectorizeError> {
-        Ok(openai_embedding_dim(model_name) as u32)
+        if self.url == OPENAI_BASE_URL {
+            return Ok(openai_embedding_dim(model_name) as u32);
+        }
+        // a custom base URL can serve any model, so the table above does not apply:
+        // determine embedding dim by generating an embedding and getting length of array
+        let req = GenericEmbeddingRequest {
+            input: vec!["hello world".to_string()],
+            model: model_name.to_string(),
+        };
+        let embedding = self.generate_embedding(&req).await?;
+        let first = embedding.embeddings.first().ok_or_else(|| {
+            VectorizeError::EmbeddingGenerationFailed(
+                "embedding response contained no embeddings".to_string(),
+            )
+        })?;
+        Ok(first.len() as u32)
     }
 }
 

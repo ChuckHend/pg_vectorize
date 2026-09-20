@@ -40,6 +40,8 @@ pub enum VectorizeError {
     JobNotFound(String),
     #[error("embedding generation failed: {0}")]
     EmbeddingGenerationFailed(String),
+    #[error("embedding provider '{provider}' is not configured: {env_var} is not set")]
+    ProviderNotConfigured { provider: String, env_var: String },
     #[error("pgmq error: {0}")]
     PgmqError(#[from] PgmqError),
 }

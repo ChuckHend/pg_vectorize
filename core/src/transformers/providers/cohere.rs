@@ -56,13 +56,10 @@ impl CohereProvider {
         };
         let final_api_key = match api_key {
             Some(api_key) => api_key,
-            None => match env::var("CO_API_KEY") {
-                Ok(key) => key,
-                Err(e) => {
-                    log::error!("CO_API_KEY environment variable not set.");
-                    Err(e)?
-                }
-            },
+            None => env::var("CO_API_KEY").map_err(|_| VectorizeError::ProviderNotConfigured {
+                provider: "cohere".to_string(),
+                env_var: "CO_API_KEY".to_string(),
+            })?,
         };
         Ok(CohereProvider {
             url: final_url,
