@@ -6,6 +6,8 @@ DATABASE_URL:=postgres://${USER}:${USER}@localhost:288${PG_VERSION}/postgres
 PGRX_PG_CONFIG:=$(shell cargo pgrx info pg-config pg${PG_VERSION})
 PGRX_VERSION := $(shell grep -E "^pgrx\s*=" Cargo.toml | cut -d'"' -f2 | tr -d '=')
 UPGRADE_FROM_VER:=0.16.0
+# pgmq tag or branch to install. Empty installs the default branch.
+PGMQ_VERSION ?=
 BRANCH:=$(git rev-parse --abbrev-ref HEAD)
 RUST_LOG:=debug
 ARCH := $(shell uname -m)
@@ -68,7 +70,7 @@ install-pgvector:
 	cd .. && rm -rf pgvector
 
 install-pgmq:
-	git clone https://github.com/pgmq/pgmq.git && \
+	git clone $(if $(PGMQ_VERSION),--branch $(PGMQ_VERSION) --depth 1) https://github.com/pgmq/pgmq.git && \
 	cd pgmq/pgmq-extension && \
 	PG_CONFIG=${PGRX_PG_CONFIG} make clean && \
 	PG_CONFIG=${PGRX_PG_CONFIG} make && \
