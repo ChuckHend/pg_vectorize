@@ -51,7 +51,9 @@ jobs:
           pg-version: pg17
       - name: Install project dependencies
         run: |
-          make setup PG_VERSION=17
+          # pgmq >= 1.10.0 added a column to message_record that breaks the
+          # pgmq 0.29 client used by v0.20.0, so pin an older pgmq here.
+          make setup PG_VERSION=17 PGMQ_VERSION=v1.9.0
       - name: Test previous version (v0.20.0)
         run: |
           git fetch --tags
