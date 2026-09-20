@@ -18,6 +18,7 @@ nav:
     - API:
       - Table: 'server/api/table.md'
       - Search: 'server/api/search.md'
+    - Configuration: 'server/configuration.md'
   - Extension:
     - API:
       - Overview: 'extension/api/index.md'
@@ -30,6 +31,7 @@ nav:
         - Sentence Transformers: 'extension/examples/sentence_transformers.md'
         - OpenAI Embeddings: 'extension/examples/openai_embeddings.md'
         - Scheduling: 'extension/examples/scheduling.md'
+  - Production: 'production.md'
 markdown_extensions:
 - toc:
     permalink: true

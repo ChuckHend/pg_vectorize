@@ -8,5 +8,6 @@ Available pages:
 
 - API reference: `docs/server/api/table.md` - Initialize a vectorize job (POST /api/v1/table)
 - API reference: `docs/server/api/search.md` - Search the indexed data (GET /api/v1/search)
+- Configuration: `docs/server/configuration.md` - Point the server at your Postgres and embedding provider
 
 You can run the server locally using the instructions in `server/README.md`. The examples on the API pages below assume the server is running on http://localhost:8080.

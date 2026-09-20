@@ -60,4 +60,4 @@ Errors
 
  - 400 / InvalidRequest - malformed payload or validation failed (e.g., wrong timestamp type)
  - 404 / NotFound - referenced table/column or objects not found
- - 500 / InternalServerError - other server-side errors
+ - 500 / InternalServerError - other server-side errors. If the model's provider has no credentials on the server, the body names the provider and the environment variable to set, for example `{"error": "embedding provider 'openai' is not configured: OPENAI_API_KEY is not set"}`. See [Server configuration](../configuration.md).
