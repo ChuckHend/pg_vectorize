@@ -36,6 +36,25 @@ docker compose up -d
 
 To run everything yourself, keep `COMPOSE_PROFILES=postgres,tei` from `.env.example`, set `POSTGRES_PASSWORD`, pick an `EMBEDDING_MODEL`, and run `docker compose up -d`.
 
+## Choosing an embedding model
+
+The best model depends on your language, domain, document length, latency and cost, and on the hardware it runs on. Plan to spend time on this: embed a sample of your own data with a few candidates and check that search returns what your users expect. Trying candidates first is cheap (`vector-serve` or a hosted provider makes it easy) and changing later is expensive.
+
+If you want somewhere to start, `deploy/` uses `BAAI/bge-base-en-v1.5`. These three work with the bundled TEI:
+
+| model | dimensions | max tokens |
+|---|---|---|
+| `BAAI/bge-small-en-v1.5` | 384 | 512 |
+| `BAAI/bge-base-en-v1.5` | 768 | 512 |
+| `BAAI/bge-large-en-v1.5` | 1024 | 512 |
+
+Larger models usually retrieve better and run slower. All three are English-language and MIT-licensed. TEI runs any embedding model it supports (see its documentation for the list), so for other languages pick a multilingual one.
+
+Two things to know before you choose, whichever provider you use:
+
+- **The model is fixed per table.** The embeddings column is typed `vector(N)`, so changing to a model with a different dimension means re-embedding everything. Vectors from different models are not comparable even at the same dimension. Decide before loading data.
+- **Inputs longer than the model's max tokens are truncated** (the bundled TEI runs with `--auto-truncate`), so the tail of a long document does not affect its embedding. Check the limit against your document or chunk size.
+
 ## Self-hosting embeddings with TEI
 
 This section applies when you run the embedding model yourself (the `tei` profile). With a hosted provider, skip to [Postgres](#postgres).
@@ -64,42 +83,33 @@ This is embedding throughput only. On the end-to-end search benchmark (`bench/`)
 | `--payload-limit 50000000` | Default request body cap is 2 MB, which a batch of real documents exceeds (`413`). |
 | `--auto-truncate` | Cut inputs longer than the model's limit instead of failing the whole batch because of one long row. |
 
-### Choosing a model
+### Setting the model
 
-| model | dimensions | max tokens | note |
-|---|---|---|---|
-| `BAAI/bge-small-en-v1.5` | 384 | 512 | fastest, smallest |
-| `BAAI/bge-base-en-v1.5` | 768 | 512 | the default in `deploy/` |
-| `BAAI/bge-large-en-v1.5` | 1024 | 512 | best quality of the three, slowest |
-
-All three are English-language, MIT-licensed, and work with TEI. Any BERT-family embedding model TEI supports will work; see the TEI documentation for the list.
-
-Two things to know before you choose:
-
-- **The model is fixed per table.** The embeddings column is typed `vector(N)`, so changing to a model with a different dimension means re-embedding everything. Decide before loading data.
-- **TEI ignores the `model` field in a request.** It embeds with whatever it was started with. A job created with a different `model` string will still be embedded by TEI's model without any error, so keep the job's `model` and `EMBEDDING_MODEL` the same.
+Set `EMBEDDING_MODEL` in `.env` (see [Choosing an embedding model](#choosing-an-embedding-model)). TEI serves that one model and **ignores the `model` field in a request**. A job created with a different `model` string is still embedded by TEI's model, without any error, so keep the job's `model` and `EMBEDDING_MODEL` the same.
 
 ### CPU sizing and batch size
 
-Larger models are much slower than `all-MiniLM-L6-v2`. On the same host, `bge-base-en-v1.5` on CPU embedded 32 inputs of about 450 tokens in 4.2 s and 128 in 20.6 s, roughly 6 to 8 documents per second. TEI publishes GPU images, which change these numbers by a wide margin; see its documentation for the right image for your GPU.
+Larger models are slower than small ones, and CPU is much slower than GPU (TEI publishes GPU images; see its documentation for the right one for your GPU). How slow depends on the model, your hardware and your document length, so time a batch of your own documents before settling on settings.
 
 This interacts with two pg_vectorize settings:
 
-- The worker splits work into jobs of `vectorize.batch_size` rows, default **1000**, and sends each as one request.
+- Rows inserted or updated after a job exists are queued in jobs of up to `vectorize.batch_size` rows, and the worker embeds each job's rows together. This is a Postgres setting, read by the trigger function in the session that writes the rows, not a server environment variable. The built-in default is **1000**, but on first start the server tries to `ALTER SYSTEM` it to **10000**. That needs superuser, so the bundled Postgres ends up at 10000 and most managed Postgres services stay at 1000. The rows already in the table when you create a job are queued differently: in batches of about 10,000 tokens, which is not configurable.
 - Embedding requests time out after **120 s** by default. Set the `EMBEDDING_REQUEST_TIMEOUT` environment variable (in seconds) on the worker to change it: the `worker` service in the compose file, or the server if you run the worker in-process. It applies to each HTTP request to the embedding provider.
 
-At 6 to 8 documents per second, a 1000-row batch of long documents takes longer than 120 s. And when a client gives up, TEI does not cancel the batch it already accepted: in testing it kept all CPUs busy for minutes after the proxy timed out. If your documents are long and you are on CPU, lower the batch size:
+On CPU, a job of 1000 or more long documents can take longer than 120 s. And when a client gives up, TEI does not cancel the batch it already accepted: in testing it kept all CPUs busy for minutes after the proxy timed out. If your documents are long and you are on CPU, lower the batch size for the database that holds your tables:
 
 ```sql
 ALTER DATABASE postgres SET vectorize.batch_size = 100;
 ```
+
+A database-level setting overrides the server's `ALTER SYSTEM` value, and applies to new connections, so recycle your application's connection pool afterwards.
 
 ## Postgres
 
 - **Prefer a managed Postgres** that offers pgvector (RDS, Cloud SQL, Neon, and others): leave the `postgres` profile off and set `DATABASE_URL`. If you use the bundled one, back up the `pgdata` volume.
 - **Size memory.** Postgres defaults are tiny. `maintenance_work_mem` bounds HNSW index builds; `shared_buffers` and `effective_cache_size` should reflect the host. The compose file exposes these as `PG_SHARED_BUFFERS`, `PG_EFFECTIVE_CACHE_SIZE` and `PG_MAINTENANCE_WORK_MEM`.
 - **Keep the embedder off the database host** if you can. On the benchmark host, Postgres and the embedding service competed for the same CPUs. We did not isolate how much of the search latency that explains, so treat this as a precaution.
-- **Connection pool.** `DATABASE_POOL_MAX` (default 18 in the compose files) and `NUM_SERVER_WORKERS` (default 8) set how many connections the server holds. Keep the total under Postgres's `max_connections`.
+- **Connection pool.** `DATABASE_POOL_MAX` (default `2 * NUM_SERVER_WORKERS + 2`, so 18) and `NUM_SERVER_WORKERS` (default 8) set how many connections the server holds. Keep the total under Postgres's `max_connections`.
 
 ## The background worker
 

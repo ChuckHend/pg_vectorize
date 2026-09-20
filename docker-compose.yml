@@ -37,6 +37,8 @@ services:
       DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-18}
       RUST_LOG: debug
     command: vectorize-server
+  # For production you likely want TEI or a hosted embedding provider (OpenAI, Voyage,
+  # Cohere, ...) instead of vector-serve: see deploy/docker-compose.yml and docs/production.md.
   vector-serve:
     restart: always
     logging: *default-logging
