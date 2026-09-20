@@ -1,6 +1,6 @@
 [package]
 name = "vectorize"
-version = "0.23.0"
+version = "0.23.1"
 edition = "2021"
 rust-version = "1.96"
 publish = false
