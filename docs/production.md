@@ -93,16 +93,19 @@ Larger models are slower than small ones, and CPU is much slower than GPU (TEI p
 
 This interacts with two pg_vectorize settings:
 
-- Rows inserted or updated after a job exists are queued in jobs of up to `vectorize.batch_size` rows, and the worker embeds each job's rows together. This is a Postgres setting, read by the trigger function in the session that writes the rows, not a server environment variable. The built-in default is **1000**, but on first start the server tries to `ALTER SYSTEM` it to **10000**. That needs superuser, so the bundled Postgres ends up at 10000 and most managed Postgres services stay at 1000. The rows already in the table when you create a job are queued differently: in batches of about 10,000 tokens, which is not configurable.
+- Rows are queued in messages of up to the job's `batch_size` rows, and the worker sends each message's rows to the embedding provider in one request. Set `batch_size` when you create the job (default **1000**, maximum 10000), or change it later with [`PATCH /api/v1/table/{job_name}`](server/api/table.md#patch-apiv1tablejob_name). The rows already in the table when you create a job are also capped at about 10,000 tokens per message.
 - Embedding requests time out after **120 s** by default. Set the `EMBEDDING_REQUEST_TIMEOUT` environment variable (in seconds) on the worker to change it: the `worker` service in the compose file, or the server if you run the worker in-process. It applies to each HTTP request to the embedding provider.
 
-On CPU, a job of 1000 or more long documents can take longer than 120 s. And when a client gives up, TEI does not cancel the batch it already accepted: in testing it kept all CPUs busy for minutes after the proxy timed out. If your documents are long and you are on CPU, lower the batch size for the database that holds your tables:
+On CPU, a batch of 1000 or more long documents can take longer than 120 s. And when a client gives up, TEI does not cancel the batch it already accepted: in testing it kept all CPUs busy for minutes after the proxy timed out. If your documents are long and you are on CPU, lower the job's batch size:
 
-```sql
-ALTER DATABASE postgres SET vectorize.batch_size = 100;
+```bash
+curl -X PATCH http://localhost:8080/api/v1/table/my_job \
+  -H "Content-Type: application/json" -d '{"batch_size": 100}'
 ```
 
-A database-level setting overrides the server's `ALTER SYSTEM` value, and applies to new connections, so recycle your application's connection pool afterwards.
+The new size applies to rows written after the request returns; messages already queued keep their size.
+
+Jobs created before `batch_size` existed keep reading the `vectorize.batch_size` Postgres setting until you set their `batch_size` with `PATCH`. On upgrade, their stored `batch_size` is set to that setting's value (or 1000), so `PATCH` with the same number keeps their behavior.
 
 ## Postgres
 
@@ -110,6 +113,40 @@ A database-level setting overrides the server's `ALTER SYSTEM` value, and applie
 - **Size memory.** Postgres defaults are tiny. `maintenance_work_mem` bounds HNSW index builds; `shared_buffers` and `effective_cache_size` should reflect the host. The compose file exposes these as `PG_SHARED_BUFFERS`, `PG_EFFECTIVE_CACHE_SIZE` and `PG_MAINTENANCE_WORK_MEM`.
 - **Keep the embedder off the database host** if you can. On the benchmark host, Postgres and the embedding service competed for the same CPUs. We did not isolate how much of the search latency that explains, so treat this as a precaution.
 - **Connection pool.** `DATABASE_POOL_MAX` (default `2 * NUM_SERVER_WORKERS + 2`, so 18) and `NUM_SERVER_WORKERS` (default 8) set how many connections the server holds. Keep the total under Postgres's `max_connections`.
+
+### Database role
+
+The server and worker do not need a superuser. Connect them as a dedicated role, and have an administrator run this once, replacing `postgres` with your database and `public.products` with each table you create jobs on:
+
+```sql
+-- as a superuser or the database owner
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE ROLE vectorize LOGIN PASSWORD 'change-me';
+
+-- lets the server create the pgmq and vectorize schemas on first start
+GRANT CREATE ON DATABASE postgres TO vectorize;
+
+-- for each table you create a job on
+GRANT USAGE ON SCHEMA public TO vectorize;
+GRANT SELECT, REFERENCES, TRIGGER ON public.products TO vectorize;
+```
+
+What each grant is for:
+
+- **`vector` must already be installed.** The server runs `CREATE EXTENSION IF NOT EXISTS vector` on start, which is a no-op when it exists but fails for a non-superuser when it does not.
+- **`SELECT, REFERENCES, TRIGGER` on a source table** let the server read its rows, create the embeddings and search-token tables with foreign keys to it, and add the triggers that queue changed rows.
+- **Deleting a job needs more.** `DELETE /api/v1/table/{job_name}` drops those triggers, and Postgres only lets the table's owner do that. Either make the `vectorize` role a member of the owning role, or drop the triggers yourself as the owner.
+
+The triggers run as whichever role writes to the source table, not as `vectorize`. If your application writes as a different role, that role also needs access to what the triggers write to:
+
+```sql
+GRANT USAGE ON SCHEMA vectorize, pgmq TO app_role;
+GRANT INSERT ON pgmq.q_vectorize_jobs TO app_role;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA pgmq TO app_role;
+-- search-token tables are created per job, so grant on future tables too
+ALTER DEFAULT PRIVILEGES FOR ROLE vectorize IN SCHEMA vectorize
+    GRANT SELECT, INSERT, UPDATE ON TABLES TO app_role;
+```
 
 ## The background worker
 

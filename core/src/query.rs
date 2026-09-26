@@ -446,6 +446,31 @@ $$ LANGUAGE plpgsql;
     )
 }
 
+/// creates a function that can be called by trigger, queueing changed rows in
+/// messages of at most `batch_size` rows
+pub fn create_trigger_handler_with_batch_size(
+    job_name: &str,
+    pkey: &str,
+    batch_size: i32,
+) -> String {
+    format!(
+        "
+CREATE OR REPLACE FUNCTION {TRIGGER_FN_PREFIX}{job_name}()
+RETURNS TRIGGER AS $$
+DECLARE
+BEGIN
+    PERFORM vectorize._handle_table_update(
+        '{job_name}'::text,
+       (SELECT array_agg({pkey}::text) FROM new_table)::TEXT[],
+        {batch_size}::integer
+    );
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+"
+    )
+}
+
 pub fn handle_table_update() -> String {
     "CREATE OR REPLACE FUNCTION vectorize._handle_table_update(
     job_name text,

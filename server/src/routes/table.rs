@@ -3,14 +3,14 @@ use std::sync::Arc;
 use crate::app_state::AppState;
 use crate::bm25::BM25Index;
 use crate::errors::ServerError;
-use actix_web::{HttpResponse, delete, post, web};
+use actix_web::{HttpResponse, delete, patch, post, web};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use vectorize_core::init::{self, get_column_datatype};
 
-use vectorize_core::types::VectorizeJob;
+use vectorize_core::types::{JobUpdate, VectorizeJob};
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]
 pub struct JobResponse {
@@ -69,40 +69,98 @@ pub async fn table(
 
     // BM25 indexing is opt-in per job via `bm25_enabled`.
     if payload.bm25_enabled {
-        // Create a BM25 index for this job and populate it in the background.
-        match BM25Index::new() {
-            Ok(idx) => {
-                let idx = Arc::new(Mutex::new(idx));
-                app_state
-                    .bm25_indexes
-                    .write()
-                    .await
-                    .insert(payload.job_name.clone(), idx.clone());
-                let pool = app_state.db_pool.clone();
-                let job = payload.clone();
-                tokio::spawn(async move {
-                    crate::bm25::populate_bm25_index(&pool, &job, idx).await;
-                });
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to create BM25 index for job {}: {e}",
-                    payload.job_name
-                );
-            }
-        }
+        build_bm25_index(&app_state, &payload).await;
     } else {
         // Job was re-created/updated with BM25 disabled; drop any stale index
         // so it stops consuming memory and the background sync loop skips it.
-        app_state
-            .bm25_indexes
-            .write()
-            .await
-            .remove(&payload.job_name);
+        drop_bm25_index(&app_state, &payload.job_name).await;
     }
 
     let resp = JobResponse { id: job_id };
     Ok(HttpResponse::Ok().json(resp))
+}
+
+/// Creates a BM25 index for the job, replacing any existing one, and populates it in the background.
+async fn build_bm25_index(app_state: &AppState, job: &VectorizeJob) {
+    match BM25Index::new() {
+        Ok(idx) => {
+            let idx = Arc::new(Mutex::new(idx));
+            app_state
+                .bm25_indexes
+                .write()
+                .await
+                .insert(job.job_name.clone(), idx.clone());
+            let pool = app_state.db_pool.clone();
+            let job = job.clone();
+            tokio::spawn(async move {
+                crate::bm25::populate_bm25_index(&pool, &job, idx).await;
+            });
+        }
+        Err(e) => {
+            tracing::warn!("Failed to create BM25 index for job {}: {e}", job.job_name);
+        }
+    }
+}
+
+async fn drop_bm25_index(app_state: &AppState, job_name: &str) {
+    app_state.bm25_indexes.write().await.remove(job_name);
+}
+
+#[utoipa::path(
+    context_path = "/api/v1",
+    request_body = JobUpdate,
+    responses(
+        (
+            status = 200, description = "Updated the job's settings",
+            body = VectorizeJob,
+        ),
+        (
+            status = 400, description = "Invalid or unsupported setting",
+        ),
+        (
+            status = 404, description = "Job not found",
+        ),
+    ),
+)]
+#[patch("/table/{job_name}")]
+pub async fn update_table(
+    app_state: web::Data<AppState>,
+    job_name: web::Path<String>,
+    payload: web::Json<JobUpdate>,
+) -> Result<HttpResponse, ServerError> {
+    let job_name = job_name.into_inner();
+    let update = payload.into_inner();
+
+    let job = init::update_job(&app_state.db_pool, &job_name, &update)
+        .await
+        .map_err(|e| match e {
+            vectorize_core::errors::VectorizeError::InvalidInput(msg) => {
+                ServerError::InvalidRequest(msg)
+            }
+            vectorize_core::errors::VectorizeError::NotFound(msg) => {
+                ServerError::NotFoundError(msg)
+            }
+            _ => ServerError::from(e),
+        })?;
+
+    {
+        let mut job_cache = app_state.job_cache.write().await;
+        job_cache.insert(job_name.clone(), job.clone());
+    }
+
+    match update.bm25_enabled {
+        Some(true) => {
+            // an index that already exists is kept up to date by the sync loop
+            let exists = app_state.bm25_indexes.read().await.contains_key(&job_name);
+            if !exists {
+                build_bm25_index(&app_state, &job).await;
+            }
+        }
+        Some(false) => drop_bm25_index(&app_state, &job_name).await,
+        None => {}
+    }
+
+    Ok(HttpResponse::Ok().json(job))
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, ToSchema)]

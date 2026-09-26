@@ -2,8 +2,8 @@ use crate::errors::VectorizeError;
 use crate::query;
 use crate::transformers::providers::get_provider;
 use crate::types::JobMessage;
-use crate::types::VectorizeJob;
-use sqlx::{PgConnection, PgPool};
+use crate::types::{JobUpdate, MAX_BATCH_SIZE, VectorizeJob};
+use sqlx::{FromRow, PgConnection, PgPool};
 
 use uuid::Uuid;
 
@@ -36,6 +36,15 @@ fn validate_job_identifiers(job_request: &VectorizeJob) -> Result<(), VectorizeE
         return Err(VectorizeError::InvalidInput(
             "src_columns must not be empty".to_string(),
         ));
+    }
+    validate_batch_size(job_request.batch_size)
+}
+
+fn validate_batch_size(batch_size: i32) -> Result<(), VectorizeError> {
+    if !(1..=MAX_BATCH_SIZE).contains(&batch_size) {
+        return Err(VectorizeError::InvalidInput(format!(
+            "batch_size must be between 1 and {MAX_BATCH_SIZE}, got: {batch_size}"
+        )));
     }
     Ok(())
 }
@@ -117,22 +126,8 @@ pub async fn init_vectorize(pool: &PgPool) -> Result<(), VectorizeError> {
             query::handle_table_update(),
             query::create_batch_texts_fn(),
         ];
-        // these statements are not critical, so we log warnings and continue
-        let statements_failable = vec![
-            "ALTER SYSTEM SET vectorize.batch_size = 10000;".to_string(),
-            "SELECT pg_reload_conf();".to_string(),
-        ];
         for s in statements_nofail {
             sqlx::query(&s).execute(pool).await?;
-        }
-        for s in statements_failable.into_iter() {
-            match sqlx::query(&s).execute(pool).await {
-                Ok(_) => {}
-                Err(e) => {
-                    let errmsg = format!("Warning: failed to execute statement: {s}, error: {e}");
-                    log::warn!("{errmsg}");
-                }
-            }
         }
         log::info!("Installing vectorize...")
     }
@@ -164,8 +159,8 @@ pub async fn initialize_job(
     // leaves no job record, tables, triggers or queued messages behind
     let mut tx = pool.begin().await?;
     let job_id: Uuid = sqlx::query_scalar("
-        INSERT INTO vectorize.job (job_name, src_schema, src_table, src_columns, primary_key, update_time_col, model, bm25_enabled)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO vectorize.job (job_name, src_schema, src_table, src_columns, primary_key, update_time_col, model, bm25_enabled, batch_size)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (job_name) DO UPDATE SET
             src_schema = EXCLUDED.src_schema,
             src_table = EXCLUDED.src_table,
@@ -173,7 +168,8 @@ pub async fn initialize_job(
             primary_key = EXCLUDED.primary_key,
             update_time_col = EXCLUDED.update_time_col,
             model = EXCLUDED.model,
-            bm25_enabled = EXCLUDED.bm25_enabled
+            bm25_enabled = EXCLUDED.bm25_enabled,
+            batch_size = EXCLUDED.batch_size
         RETURNING id")
         .bind(job_request.job_name.clone())
         .bind(job_request.src_schema.clone())
@@ -183,6 +179,7 @@ pub async fn initialize_job(
         .bind(job_request.update_time_col.clone())
         .bind(job_request.model.to_string())
         .bind(job_request.bm25_enabled)
+        .bind(job_request.batch_size)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -248,8 +245,11 @@ pub async fn initialize_job(
     sqlx::query(&fts_index_query).execute(&mut *tx).await?;
 
     // create triggers on the source table
-    let trigger_handler =
-        query::create_trigger_handler(&job_request.job_name, &job_request.primary_key);
+    let trigger_handler = query::create_trigger_handler_with_batch_size(
+        &job_request.job_name,
+        &job_request.primary_key,
+        job_request.batch_size,
+    );
     let insert_trigger = query::create_event_trigger(
         &job_request.job_name,
         &job_request.src_schema,
@@ -326,8 +326,10 @@ pub async fn scan_job(
 
     match new_or_updated_rows {
         Some(rows) => {
+            // cap each message at ~10k tokens and at the job's batch_size rows
             let batches = query::create_batches(rows, 10000);
-            for b in batches {
+            let batch_size = job_request.batch_size as usize;
+            for b in batches.iter().flat_map(|b| b.chunks(batch_size)) {
                 let record_ids = b.iter().map(|i| i.record_id.clone()).collect::<Vec<_>>();
 
                 let msg = JobMessage {
@@ -355,6 +357,70 @@ pub async fn scan_job(
         }
     }
     Ok(())
+}
+
+/// Applies the settings that can change on an existing job and returns the updated job.
+/// A new batch_size is written into the job's trigger function, so it applies to rows
+/// written after this commits; messages already queued keep their size.
+pub async fn update_job(
+    pool: &PgPool,
+    job_name: &str,
+    update: &JobUpdate,
+) -> Result<VectorizeJob, VectorizeError> {
+    if query::check_input(job_name).is_err() {
+        return Err(VectorizeError::InvalidInput(format!(
+            "job_name must contain only alphanumeric characters or underscores, got: '{job_name}'"
+        )));
+    }
+    if update.batch_size.is_none() && update.bm25_enabled.is_none() {
+        return Err(VectorizeError::InvalidInput(
+            "no settings to update: set batch_size and/or bm25_enabled".to_string(),
+        ));
+    }
+    if let Some(batch_size) = update.batch_size {
+        validate_batch_size(batch_size)?;
+    }
+
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        "SELECT job_name, src_table, src_schema, src_columns, primary_key, update_time_col, model, bm25_enabled, batch_size
+         FROM vectorize.job
+         WHERE job_name = $1
+         FOR UPDATE",
+    )
+    .bind(job_name)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| VectorizeError::NotFound(format!("Job '{job_name}' not found")))?;
+    let mut job = VectorizeJob::from_row(&row)?;
+
+    sqlx::query(
+        "UPDATE vectorize.job
+         SET batch_size = COALESCE($2, batch_size),
+             bm25_enabled = COALESCE($3, bm25_enabled)
+         WHERE job_name = $1",
+    )
+    .bind(job_name)
+    .bind(update.batch_size)
+    .bind(update.bm25_enabled)
+    .execute(&mut *tx)
+    .await?;
+
+    if let Some(batch_size) = update.batch_size {
+        // primary_key is interpolated into the function body; rows written before
+        // identifier validation existed are not guaranteed to be safe
+        query::check_input(&job.primary_key)?;
+        let trigger_handler =
+            query::create_trigger_handler_with_batch_size(job_name, &job.primary_key, batch_size);
+        sqlx::query(&trigger_handler).execute(&mut *tx).await?;
+        job.batch_size = batch_size;
+    }
+    if let Some(bm25_enabled) = update.bm25_enabled {
+        job.bm25_enabled = bm25_enabled;
+    }
+    tx.commit().await?;
+
+    Ok(job)
 }
 
 pub async fn cleanup_job(pool: &PgPool, job_name: &str) -> Result<(), VectorizeError> {
@@ -460,6 +526,7 @@ mod tests {
             update_time_col: "updated_at".to_string(),
             model: crate::types::Model::new("openai/text-embedding-3-small").unwrap(),
             bm25_enabled: false,
+            batch_size: crate::types::DEFAULT_BATCH_SIZE,
         }
     }
 
@@ -503,5 +570,52 @@ mod tests {
             validate_job_identifiers(&job(&[])),
             Err(VectorizeError::InvalidInput(_))
         ));
+    }
+
+    #[test]
+    fn test_validate_batch_size() {
+        assert!(validate_batch_size(1).is_ok());
+        assert!(validate_batch_size(MAX_BATCH_SIZE).is_ok());
+        for bad in [0, -1, MAX_BATCH_SIZE + 1] {
+            assert!(matches!(
+                validate_batch_size(bad),
+                Err(VectorizeError::InvalidInput(_))
+            ));
+        }
+        let mut j = job(&["ok"]);
+        j.batch_size = 0;
+        assert!(validate_job_identifiers(&j).is_err());
+    }
+
+    #[test]
+    fn test_job_batch_size_defaults_when_omitted() {
+        let j: VectorizeJob = serde_json::from_value(serde_json::json!({
+            "job_name": "my_job",
+            "src_table": "products",
+            "src_schema": "public",
+            "src_columns": ["description"],
+            "primary_key": "product_id",
+            "update_time_col": "updated_at",
+            "model": "openai/text-embedding-3-small"
+        }))
+        .unwrap();
+        assert_eq!(j.batch_size, crate::types::DEFAULT_BATCH_SIZE);
+    }
+
+    #[test]
+    fn test_job_update_rejects_unknown_fields() {
+        let u: JobUpdate = serde_json::from_str(r#"{"batch_size": 50}"#).unwrap();
+        assert_eq!(u.batch_size, Some(50));
+        assert_eq!(u.bm25_enabled, None);
+        assert!(serde_json::from_str::<JobUpdate>(r#"{"model": "openai/x"}"#).is_err());
+    }
+
+    #[test]
+    fn test_create_trigger_handler_with_batch_size() {
+        let sql = query::create_trigger_handler_with_batch_size("my_job", "product_id", 50);
+        assert!(sql.contains("CREATE OR REPLACE FUNCTION vectorize.handle_update_my_job()"));
+        assert!(sql.contains("'my_job'::text"));
+        assert!(sql.contains("array_agg(product_id::text)"));
+        assert!(sql.contains("50::integer"));
     }
 }
