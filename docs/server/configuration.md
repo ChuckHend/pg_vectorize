@@ -6,7 +6,7 @@
 
 | variable | default | |
 |---|---|---|
-| `DATABASE_URL` | `postgres://postgres:postgres@localhost:5432/postgres` | Any Postgres with [pgvector](https://github.com/pgvector/pgvector), including a managed one (RDS, Neon, and others). |
+| `DATABASE_URL` | none, required | Any Postgres with [pgvector](https://github.com/pgvector/pgvector), including a managed one (RDS, Neon, and others). The server and worker exit at startup if it is unset. The role does not need to be a superuser; see [Database role](../production.md#database-role). |
 
 ## Embedding providers
 

@@ -77,9 +77,8 @@ impl Config {
             vectorize_proxy_port: from_env_default("VECTORIZE_PROXY_PORT", "5433")
                 .parse()
                 .unwrap(),
-            database_url: from_env_default(
-                "DATABASE_URL",
-                "postgres://postgres:postgres@localhost:5432/postgres",
+            database_url: env::var("DATABASE_URL").expect(
+                "DATABASE_URL must be set, e.g. postgresql://user:password@host:5432/postgres",
             ),
             queue_name: from_env_default("VECTORIZE_QUEUE", "vectorize_jobs"),
             embedding_svc_url: from_env_default(
