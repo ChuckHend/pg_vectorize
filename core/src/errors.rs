@@ -38,6 +38,8 @@ pub enum VectorizeError {
     EnvError(#[from] VarError),
     #[error("job not found: {0}")]
     JobNotFound(String),
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
     #[error("embedding generation failed: {0}")]
     EmbeddingGenerationFailed(String),
     #[error("embedding provider '{provider}' is not configured: {env_var} is not set")]

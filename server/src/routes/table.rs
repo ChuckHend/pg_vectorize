@@ -52,7 +52,14 @@ pub async fn table(
         )));
     }
 
-    let job_id = init::initialize_job(&app_state.db_pool, &payload).await?;
+    let job_id = init::initialize_job(&app_state.db_pool, &payload)
+        .await
+        .map_err(|e| match e {
+            vectorize_core::errors::VectorizeError::InvalidInput(msg) => {
+                ServerError::InvalidRequest(msg)
+            }
+            _ => ServerError::from(e),
+        })?;
 
     // Update the job cache with the new job information
     {
