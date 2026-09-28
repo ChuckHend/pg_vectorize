@@ -39,7 +39,7 @@ docker ps
 #### 3.1. Clone and enter directory
 
 ```bash
-git clone https://github.com/pgmq/pg_vectorize.git
+git clone https://github.com/chuckhend/pg_vectorize.git
 
 cd pg_vectorize/extension
 ```
@@ -103,7 +103,7 @@ SHOW vectorize.embedding_service_url;
 
 #### 4.3. Load example data
 
-The following can be found within the this project's README, under [Vector Search Example](https://github.com/pgmq/pg_vectorize/blob/main/README.md#vector-search-example).
+The following can be found within the this project's README, under [Vector Search Example](https://github.com/chuckhend/pg_vectorize/blob/main/README.md#vector-search-example).
 
 Begin by creating a `products` table with the dataset that comes included with `pg_vectorize`.
 
@@ -176,7 +176,7 @@ cat ~/.pgrx/17.log
 
 # Releases
 
-`pg_vectorize` releases are automated through a [Github workflow](https://github.com/pgmq/pg_vectorize/blob/main/.github/workflows/extension_ci.yml).
+`pg_vectorize` releases are automated through a [Github workflow](https://github.com/chuckhend/pg_vectorize/blob/main/.github/workflows/extension_ci.yml).
 The compiled binaries are publish to and hosted at [pgt.dev](https://pgt.dev).
 To create a release, create a new tag follow a valid [semver](https://semver.org/), then create a release with the same name.
 Auto-generate the release notes and/or add more relevant details as needed.

@@ -28,11 +28,11 @@
    },
    "resources": {
       "bugtracker": {
-         "web": "https://github.com/pgmq/pg_vectorize/issues/"
+         "web": "https://github.com/chuckhend/pg_vectorize/issues/"
       },
       "repository": {
-         "url": "git://github.com/pgmq/pg_vectorize.git",
-         "web": "https://github.com/pgmq/pg_vectorize/",
+         "url": "git://github.com/chuckhend/pg_vectorize.git",
+         "web": "https://github.com/chuckhend/pg_vectorize/",
          "type": "git"
       }
    },
