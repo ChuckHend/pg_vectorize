@@ -14,5 +14,5 @@ dependencies = [
 	"mkdocstrings>=0.30.1,<1.0",
 	"MarkupSafe==3.0.3",
 	"Jinja2>3",
-	"pymdown-extensions>=10,<11.0",
+	"pymdown-extensions>=11.0.1,<13.0",
 ]
