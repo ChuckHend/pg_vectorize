@@ -1,0 +1,55 @@
+[project]
+site_name = "Vectorize"
+nav = [
+  { "Vectorize" = "index.md" },
+  { "Server" = [
+    { "API" = [
+      { "Table" = "server/api/table.md" },
+      { "Search" = "server/api/search.md" },
+    ] },
+    { "Configuration" = "server/configuration.md" },
+  ] },
+  { "Extension" = [
+    { "API" = [
+      { "Overview" = "extension/api/index.md" },
+      { "Search" = "extension/api/search.md" },
+      { "RAG" = "extension/api/rag.md" },
+      { "Utilities" = "extension/api/utilities.md" },
+    ] },
+    { "Model Providers" = "extension/models/index.md" },
+    { "Examples" = [
+      { "Search" = [
+        { "Sentence Transformers" = "extension/examples/sentence_transformers.md" },
+        { "OpenAI Embeddings" = "extension/examples/openai_embeddings.md" },
+        { "Scheduling" = "extension/examples/scheduling.md" },
+      ] },
+    ] },
+  ] },
+  { "Production" = "production.md" },
+  { "Contributing" = "CONTRIBUTING.md" },
+]
+
+# The first palette is the default, so the site opens in dark mode.
+[[project.theme.palette]]
+scheme = "slate"
+primary = "teal"
+toggle.icon = "material/weather-sunny"
+toggle.name = "light mode"
+
+[[project.theme.palette]]
+scheme = "default"
+primary = "teal"
+toggle.icon = "material/weather-night"
+toggle.name = "dark mode"
+
+[project.markdown_extensions]
+toc.permalink = true
+codehilite.guess_lang = false
+admonition = {}
+extra = {}
+pymdownx.snippets.check_paths = true
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.line_spans = "__span"
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+pymdownx.superfences = {}

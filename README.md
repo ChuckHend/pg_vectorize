@@ -13,7 +13,7 @@ This project relies heavily on the work by [pgvector](https://github.com/pgvecto
 
 **API Documentation**: https://chuckhend.github.io/pg_vectorize/
 
-**Source**: https://github.com/tembo-io/pg_vectorize
+**Source**: https://github.com/pgmq/pg_vectorize
 
 ## Overview
 
