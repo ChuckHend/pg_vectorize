@@ -1,5 +1,6 @@
 [project]
 site_name = "Vectorize"
+extra_css = ["stylesheets/extra.css"]
 nav = [
   { "Vectorize" = "index.md" },
   { "Server" = [
@@ -32,13 +33,15 @@ nav = [
 # The first palette is the default, so the site opens in dark mode.
 [[project.theme.palette]]
 scheme = "slate"
-primary = "teal"
+primary = "custom"
+accent = "custom"
 toggle.icon = "material/weather-sunny"
 toggle.name = "light mode"
 
 [[project.theme.palette]]
 scheme = "default"
-primary = "teal"
+primary = "custom"
+accent = "custom"
 toggle.icon = "material/weather-night"
 toggle.name = "dark mode"
 
