@@ -845,22 +845,11 @@ async fn test_private_hf_model() {
 
     assert!(created.is_ok(), "Failed with error: {:?}", created);
 
-    // embedding should be updated after few seconds
-    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-
-    let result = sqlx::query(&format!(
-        "SELECT vectorize.search(
-        job_name => '{job_name}',
-        query => 'mobile devices',
-        return_columns => ARRAY['product_name'],
-        num_results => 3
-    );"
-    ))
-    .execute(&conn)
-    .await
-    .expect("failed to select from test_table");
-    // 3 rows returned
-    assert_eq!(result.rows_affected(), 3);
+    let search_results: Vec<common::SearchJSON> =
+        util::common::search_with_retry(&conn, "mobile devices", &job_name, 10, 2, 3, None)
+            .await
+            .unwrap();
+    assert_eq!(search_results.len(), 3);
 }
 
 #[tokio::test]
