@@ -31,6 +31,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       CO_API_KEY: ${CO_API_KEY}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY}
       EMBEDDING_SVC_URL: ${EMBEDDING_SVC_URL:-http://vector-serve:3000/v1}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/postgres}
       NUM_SERVER_WORKERS: ${NUM_SERVER_WORKERS:-8}

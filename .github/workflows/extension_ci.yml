@@ -89,4 +89,5 @@ jobs:
           PORTKEY_API_KEY: ${{ secrets.PORTKEY_API_KEY }}
           PORTKEY_VIRTUAL_KEY_OPENAI: ${{ secrets.PORTKEY_VIRTUAL_KEY_OPENAI }}
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
         run: make test-integration

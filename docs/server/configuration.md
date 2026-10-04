@@ -16,6 +16,7 @@ The provider for a job is chosen by the prefix of its `model`: `openai/text-embe
 |---|---|---|
 | `openai/` | `OPENAI_API_KEY` (required), `OPENAI_BASE_URL` | `OPENAI_BASE_URL` points at an OpenAI-compatible gateway or proxy. It is the base, ending in `/v1`; the server appends `/embeddings`. Unset or empty means `https://api.openai.com/v1`. |
 | `voyage/` | `VOYAGE_API_KEY` | |
+| `mistral/` | `MISTRAL_API_KEY` | Supports `mistral/mistral-embed` (1024 dimensions). |
 | `cohere/` | `CO_API_KEY` | |
 | `portkey/` | `PORTKEY_API_KEY`, `PORTKEY_VIRTUAL_KEY` | Both are required. |
 | `ollama/` | | Uses `http://localhost:3001`. It cannot be changed through the environment. |

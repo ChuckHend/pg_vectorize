@@ -47,7 +47,7 @@ pub fn call_chat(
         ModelSource::Portkey => {
             get_bpe_from_model(&chat_model.name).expect("failed to get BPE from model")
         }
-        ModelSource::Voyage => {
+        ModelSource::Voyage | ModelSource::Mistral => {
             get_bpe_from_model(&chat_model.name).expect("failed to get BPE from model")
         }
     };
@@ -183,8 +183,8 @@ pub fn call_chat_completions(
                     .generate_response(model.api_name(), &messages)
                     .await
             }
-            ModelSource::SentenceTransformers | ModelSource::Cohere | ModelSource::Voyage => {
-                error!("SentenceTransformers and Cohere not yet supported for chat completions")
+            ModelSource::SentenceTransformers | ModelSource::Cohere | ModelSource::Voyage | ModelSource::Mistral => {
+                error!("SentenceTransformers, Cohere, Voyage, and Mistral not yet supported for chat completions")
             }
         }
     })?;

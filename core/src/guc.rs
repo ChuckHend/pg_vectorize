@@ -18,6 +18,8 @@ pub enum VectorizeGuc {
     PortkeyServiceUrl,
     VoyageApiKey,
     VoyageServiceUrl,
+    MistralApiKey,
+    MistralServiceUrl,
     TextIndexType,
 }
 
@@ -43,6 +45,8 @@ pub async fn get_guc(guc: VectorizeGuc, pool: &PgPool) -> Option<String> {
         VectorizeGuc::PortkeyServiceUrl => "portkey_service_url",
         VectorizeGuc::VoyageApiKey => "voyage_api_key",
         VectorizeGuc::VoyageServiceUrl => "voyage_service_url",
+        VectorizeGuc::MistralApiKey => "mistral_api_key",
+        VectorizeGuc::MistralServiceUrl => "mistral_service_url",
         VectorizeGuc::TextIndexType => "experimental_fts_index_type",
     };
     let query = format!("SHOW vectorize.{guc_name}");
@@ -84,6 +88,11 @@ pub async fn get_guc_configs(model_source: &ModelSource, pool: &PgPool) -> Model
         ModelSource::Voyage => ModelGucConfig {
             api_key: get_guc(VectorizeGuc::VoyageApiKey, pool).await,
             service_url: get_guc(VectorizeGuc::VoyageServiceUrl, pool).await,
+            virtual_key: None,
+        },
+        ModelSource::Mistral => ModelGucConfig {
+            api_key: get_guc(VectorizeGuc::MistralApiKey, pool).await,
+            service_url: get_guc(VectorizeGuc::MistralServiceUrl, pool).await,
             virtual_key: None,
         },
     }
