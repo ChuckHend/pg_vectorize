@@ -87,7 +87,8 @@ impl EmbeddingProvider for MistralProvider {
             .send()
             .await?;
 
-        let embeddings = handle_response::<MistralEmbeddingResponse>(response, "embeddings").await?;
+        let embeddings =
+            handle_response::<MistralEmbeddingResponse>(response, "embeddings").await?;
         Ok(GenericEmbeddingResponse {
             embeddings: embeddings
                 .data
@@ -127,12 +128,10 @@ mod tests {
     #[test]
     fn test_mistral_response_conversion() {
         let response = MistralEmbeddingResponse {
-            data: vec![
-                EmbeddingObject {
-                    index: Some(0),
-                    embedding: vec![0.1, 0.2, 0.3],
-                },
-            ],
+            data: vec![EmbeddingObject {
+                index: Some(0),
+                embedding: vec![0.1, 0.2, 0.3],
+            }],
         };
         let generic: GenericEmbeddingResponse = response.into();
         assert_eq!(generic.embeddings.len(), 1);

@@ -101,7 +101,7 @@ jobs:
           context: .
           file: ./server/Dockerfile
           platforms: linux/amd64
-          push: true
+          push: ${{ github.repository_owner == 'ChuckHend' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
           tags: |
             ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }}-amd64
           cache-from: type=gha
@@ -138,7 +138,7 @@ jobs:
           context: .
           file: ./server/Dockerfile
           platforms: linux/arm64
-          push: true
+          push: ${{ github.repository_owner == 'ChuckHend' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
           tags: |
             ghcr.io/chuckhend/vectorize-server:${{ steps.versions.outputs.SHORT_SHA }}-arm64
           provenance: true
@@ -147,6 +147,7 @@ jobs:
   create_manifest:
     name: Create and Push Manifest
     runs-on: ubuntu-latest
+    if: github.repository_owner == 'ChuckHend' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     needs: [build_and_push_arm64, build_and_push_amd64]
     outputs:
       short_sha: ${{ steps.versions.outputs.SHORT_SHA }}
