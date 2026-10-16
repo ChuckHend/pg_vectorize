@@ -30,6 +30,9 @@ pub static PORTKEY_SERVICE_URL: GucSetting<Option<CString>> =
 pub static VOYAGE_API_KEY: GucSetting<Option<CString>> = GucSetting::<Option<CString>>::new(None);
 pub static VOYAGE_SERVICE_URL: GucSetting<Option<CString>> =
     GucSetting::<Option<CString>>::new(None);
+pub static MISTRAL_API_KEY: GucSetting<Option<CString>> = GucSetting::<Option<CString>>::new(None);
+pub static MISTRAL_SERVICE_URL: GucSetting<Option<CString>> =
+    GucSetting::<Option<CString>>::new(None);
 pub static SEMANTIC_WEIGHT: GucSetting<i32> = GucSetting::<i32>::new(50);
 // EXPERIMENTAL
 pub static FTS_INDEX_TYPE: GucSetting<Option<CString>> = GucSetting::<Option<CString>>::new(None);
@@ -181,6 +184,24 @@ pub fn init_guc() {
         GucFlags::default(),
     );
 
+    GucRegistry::define_string_guc(
+        c"vectorize.mistral_service_url",
+        c"Base url for the Mistral AI platform",
+        c"Base url for the Mistral AI platform",
+        &MISTRAL_SERVICE_URL,
+        GucContext::Suset,
+        GucFlags::default(),
+    );
+
+    GucRegistry::define_string_guc(
+        c"vectorize.mistral_api_key",
+        c"API Key for the Mistral AI platform",
+        c"API Key for the Mistral AI platform",
+        &MISTRAL_API_KEY,
+        GucContext::Suset,
+        GucFlags::default(),
+    );
+
     GucRegistry::define_int_guc(
         c"vectorize.semantic_weight",
         c"weight for semantic search",
@@ -218,6 +239,8 @@ pub fn get_guc(guc: VectorizeGuc) -> Option<String> {
         VectorizeGuc::PortkeyServiceUrl => PORTKEY_SERVICE_URL.get(),
         VectorizeGuc::VoyageApiKey => VOYAGE_API_KEY.get(),
         VectorizeGuc::VoyageServiceUrl => VOYAGE_SERVICE_URL.get(),
+        VectorizeGuc::MistralApiKey => MISTRAL_API_KEY.get(),
+        VectorizeGuc::MistralServiceUrl => MISTRAL_SERVICE_URL.get(),
         VectorizeGuc::TextIndexType => FTS_INDEX_TYPE.get(),
     };
     if let Some(cstring) = val {
@@ -260,6 +283,11 @@ pub fn get_guc_configs(model_source: &ModelSource) -> ModelGucConfig {
         ModelSource::Voyage => ModelGucConfig {
             api_key: get_guc(VectorizeGuc::VoyageApiKey),
             service_url: get_guc(VectorizeGuc::VoyageServiceUrl),
+            virtual_key: None,
+        },
+        ModelSource::Mistral => ModelGucConfig {
+            api_key: get_guc(VectorizeGuc::MistralApiKey),
+            service_url: get_guc(VectorizeGuc::MistralServiceUrl),
             virtual_key: None,
         },
     }

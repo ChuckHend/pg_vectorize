@@ -8,6 +8,7 @@ x-env: &default-env
   OPENAI_API_KEY: ${OPENAI_API_KEY}
   CO_API_KEY: ${CO_API_KEY}
   VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+  MISTRAL_API_KEY: ${MISTRAL_API_KEY}
   DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/postgres}
   EMBEDDING_SVC_URL: ${EMBEDDING_SVC_URL:-http://vector-serve:3000/v1}
 

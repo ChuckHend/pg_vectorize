@@ -35,6 +35,7 @@ x-vectorize-env: &vectorize-env
   OPENAI_BASE_URL:
   CO_API_KEY:
   VOYAGE_API_KEY:
+  MISTRAL_API_KEY:
   PORTKEY_API_KEY:
   PORTKEY_VIRTUAL_KEY:
 
