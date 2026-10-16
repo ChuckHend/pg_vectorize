@@ -25,6 +25,25 @@ pub struct VectorizeJob {
     /// Defaults to false so BM25 indexing never runs unless explicitly requested.
     #[serde(default)]
     pub bm25_enabled: bool,
+    /// Maximum number of rows per queued message, and so per embedding request.
+    #[serde(default = "default_batch_size")]
+    pub batch_size: i32,
+}
+
+/// Settings that can be changed on an existing job. Anything else (columns, model, ...)
+/// requires re-creating the job; unknown fields are rejected rather than ignored.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct JobUpdate {
+    pub batch_size: Option<i32>,
+    pub bm25_enabled: Option<bool>,
+}
+
+pub const DEFAULT_BATCH_SIZE: i32 = 1000;
+pub const MAX_BATCH_SIZE: i32 = 10000;
+
+fn default_batch_size() -> i32 {
+    DEFAULT_BATCH_SIZE
 }
 
 #[allow(non_camel_case_types)]

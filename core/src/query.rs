@@ -446,6 +446,31 @@ $$ LANGUAGE plpgsql;
     )
 }
 
+/// creates a function that can be called by trigger, queueing changed rows in
+/// messages of at most `batch_size` rows
+pub fn create_trigger_handler_with_batch_size(
+    job_name: &str,
+    pkey: &str,
+    batch_size: i32,
+) -> String {
+    format!(
+        "
+CREATE OR REPLACE FUNCTION {TRIGGER_FN_PREFIX}{job_name}()
+RETURNS TRIGGER AS $$
+DECLARE
+BEGIN
+    PERFORM vectorize._handle_table_update(
+        '{job_name}'::text,
+       (SELECT array_agg({pkey}::text) FROM new_table)::TEXT[],
+        {batch_size}::integer
+    );
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+"
+    )
+}
+
 pub fn handle_table_update() -> String {
     "CREATE OR REPLACE FUNCTION vectorize._handle_table_update(
     job_name text,
@@ -736,9 +761,9 @@ fn hybrid_search_rows_sql(
                         {join_key},
                         embeddings <=> $1::vector as distance
                     FROM vectorize._embeddings_{job_name}
+                    ORDER BY embeddings <=> $1::vector
+                    LIMIT {window_size}
                 ) sub
-                ORDER BY distance
-                LIMIT {window_size}
             ) s
             FULL OUTER JOIN (
                 SELECT
@@ -909,9 +934,9 @@ pub fn hybrid_search_query_with_bm25(
                         {join_key},
                         embeddings <=> $1::vector AS distance
                     FROM vectorize._embeddings_{job_name}
+                    ORDER BY embeddings <=> $1::vector
+                    LIMIT {window_size}
                 ) sub
-                ORDER BY distance
-                LIMIT {window_size}
             ) s
             FULL OUTER JOIN (
                 SELECT

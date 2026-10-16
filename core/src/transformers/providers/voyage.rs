@@ -1,9 +1,8 @@
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use super::{EmbeddingProvider, GenericEmbeddingRequest, GenericEmbeddingResponse};
 use crate::errors::VectorizeError;
-use crate::transformers::http_handler::handle_response;
+use crate::transformers::http_handler::{HTTP_CLIENT, handle_response};
 use async_trait::async_trait;
 use std::env;
 
@@ -57,13 +56,12 @@ impl VoyageProvider {
         };
         let final_api_key = match api_key {
             Some(api_key) => api_key,
-            None => match env::var("VOYAGE_API_KEY") {
-                Ok(key) => key,
-                Err(e) => {
-                    log::error!("VOYAGE_API_KEY environment variable is not set.");
-                    Err(e)?
-                }
-            },
+            None => {
+                env::var("VOYAGE_API_KEY").map_err(|_| VectorizeError::ProviderNotConfigured {
+                    provider: "voyage".to_string(),
+                    env_var: "VOYAGE_API_KEY".to_string(),
+                })?
+            }
         };
         Ok(VoyageProvider {
             url: final_url,
@@ -78,14 +76,12 @@ impl EmbeddingProvider for VoyageProvider {
         &self,
         request: &'a GenericEmbeddingRequest,
     ) -> Result<GenericEmbeddingResponse, VectorizeError> {
-        let client = Client::new();
-
         let req_body = VoyageEmbeddingBody::from(request.clone());
         let embedding_url = format!("{}/embeddings", self.url);
 
-        let response = client
+        let response = HTTP_CLIENT
             .post(&embedding_url)
-            .timeout(std::time::Duration::from_secs(120_u64))
+            .timeout(crate::config::embedding_request_timeout())
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&req_body)

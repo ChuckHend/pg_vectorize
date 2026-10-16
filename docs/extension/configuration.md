@@ -31,4 +31,4 @@ ALTER SYSTEM SET vectorize.batch_size to 100;
 
 ## Available GUCs
 
-The complete list of GUCs available for pg_vectorize are defined in [extension/src/guc.rs](https://github.com/tembo-io/pg_vectorize/blob/638b12887f14d47de0793b16d535b226d8f371b9/extension/src/guc.rs#L33).
+The complete list of GUCs available for pg_vectorize are defined in [extension/src/guc.rs](https://github.com/chuckhend/pg_vectorize/blob/638b12887f14d47de0793b16d535b226d8f371b9/extension/src/guc.rs#L33).

@@ -1164,3 +1164,100 @@ async fn test_delete_job_with_pending_messages() {
 
     println!("Delete job with pending messages test completed successfully");
 }
+
+#[tokio::test]
+async fn test_update_job() {
+    common::init_test_environment().await;
+
+    let table = common::create_test_table().await;
+    let job_name = format!("test_update_job_{table}");
+    let table_url = "http://localhost:8080/api/v1/table";
+    let job_url = format!("{table_url}/{job_name}");
+    let client = reqwest::Client::new();
+
+    let payload = json!({
+        "job_name": job_name,
+        "src_table": table,
+        "src_schema": "vectorize_test",
+        "src_columns": ["content"],
+        "primary_key": "id",
+        "update_time_col": "updated_at",
+        "model": "sentence-transformers/all-MiniLM-L6-v2",
+        "batch_size": 7
+    });
+    let resp = client.post(table_url).json(&payload).send().await.unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    let cfg = vectorize_core::config::Config::from_env();
+    let pool = sqlx::PgPool::connect(&cfg.database_url).await.unwrap();
+
+    // the batch size is stored on the job and written into its trigger function
+    let batch_size_state = |pool: sqlx::PgPool, job_name: String| async move {
+        let stored: i32 =
+            sqlx::query_scalar("SELECT batch_size FROM vectorize.job WHERE job_name = $1")
+                .bind(&job_name)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let fn_src: String = sqlx::query_scalar(
+            "SELECT prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE n.nspname = 'vectorize' AND p.proname = $1",
+        )
+        .bind(format!("handle_update_{job_name}"))
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        (stored, fn_src)
+    };
+    let (stored, fn_src) = batch_size_state(pool.clone(), job_name.clone()).await;
+    assert_eq!(stored, 7);
+    assert!(fn_src.contains("7::integer"), "{fn_src}");
+
+    // update both settings
+    let resp = client
+        .patch(&job_url)
+        .json(&json!({"batch_size": 3, "bm25_enabled": true}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let updated: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(updated["batch_size"], 3);
+    assert_eq!(updated["bm25_enabled"], true);
+    assert_eq!(updated["job_name"], job_name);
+
+    let (stored, fn_src) = batch_size_state(pool.clone(), job_name.clone()).await;
+    assert_eq!(stored, 3);
+    assert!(fn_src.contains("3::integer"), "{fn_src}");
+    let bm25_enabled: bool =
+        sqlx::query_scalar("SELECT bm25_enabled FROM vectorize.job WHERE job_name = $1")
+            .bind(&job_name)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(bm25_enabled);
+
+    // unsupported fields, empty updates and out-of-range values are rejected
+    for body in [
+        json!({"model": "openai/text-embedding-3-small"}),
+        json!({}),
+        json!({"batch_size": 0}),
+        json!({"batch_size": 10001}),
+    ] {
+        let resp = client.patch(&job_url).json(&body).send().await.unwrap();
+        assert_eq!(resp.status(), reqwest::StatusCode::BAD_REQUEST, "{body}");
+    }
+    let (stored, _) = batch_size_state(pool.clone(), job_name.clone()).await;
+    assert_eq!(stored, 3, "rejected updates must not change the job");
+
+    let resp = client
+        .patch(format!("{table_url}/this_job_does_not_exist_12345"))
+        .json(&json!({"batch_size": 5}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::NOT_FOUND);
+
+    let resp = client.delete(&job_url).send().await.unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+}

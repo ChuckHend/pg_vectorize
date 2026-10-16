@@ -5,6 +5,7 @@ on:
       - main
     paths:
       - "docs/**"
+      - "zensical.toml"
       - ".github/workflows/docs.yml"
 jobs:
   deploy:
@@ -18,8 +19,13 @@ jobs:
       - name: Install the project
         run: uv sync
 
+      - name: Build docs
+        run: uv run zensical build --clean
+
       - name: Publish docs to GitHub Pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          uv run mkdocs gh-deploy --force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          uv run ghp-import --no-jekyll --push --force site

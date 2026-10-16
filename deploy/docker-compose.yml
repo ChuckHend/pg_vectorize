@@ -1,0 +1,156 @@
+# Production stack: the pg_vectorize server (API) and the embedding worker as separate
+# services, with optional bundled Postgres + pgvector and TEI. Only the API port is
+# published, on loopback. Unlike the top-level docker-compose.yml, it has no vector-serve.
+#
+# `postgres` and `tei` are compose profiles. With a managed Postgres and a hosted
+# embedding provider you need neither: leave COMPOSE_PROFILES unset and set DATABASE_URL
+# and the provider's API key. To run them here:
+#
+#   cp .env.example .env    # set COMPOSE_PROFILES, POSTGRES_PASSWORD, EMBEDDING_MODEL
+#   docker compose up -d
+#
+# See docs/production.md for the reasoning behind these settings. TLS, auth and backups
+# are not included.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: 10
+
+# Environment for both server and worker. Both embed: the worker embeds rows, the server
+# embeds search queries and checks the model when a job is created. Give both the same
+# provider credentials.
+# Provider variables are passed through only if set in .env or the shell; an unset one
+# is absent in the container, not an empty string. Which provider reads which:
+# docs/server/configuration.md.
+x-vectorize-env: &vectorize-env
+  DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-}@postgres:5432/postgres}
+  RUST_LOG: ${RUST_LOG:-info}
+  # Models prefixed sentence-transformers/ or with an unrecognized prefix go to this URL
+  # (TEI or vector-serve).
+  EMBEDDING_SVC_URL: ${EMBEDDING_SVC_URL:-http://tei:3000/v1}
+  EMBEDDING_SVC_API_KEY:
+  OPENAI_API_KEY:
+  OPENAI_BASE_URL:
+  CO_API_KEY:
+  VOYAGE_API_KEY:
+  PORTKEY_API_KEY:
+  PORTKEY_VIRTUAL_KEY:
+
+# Everything server and worker share except the command. The server overrides
+# `environment` to add its own settings.
+x-vectorize-service: &vectorize-service
+  image: ${VECTORIZE_SERVER_IMAGE:-ghcr.io/chuckhend/vectorize-server:latest}
+  restart: unless-stopped
+  logging: *default-logging
+  depends_on:
+    postgres:
+      condition: service_healthy
+      required: false
+    tei:
+      condition: service_healthy
+      required: false
+  environment: *vectorize-env
+
+services:
+  # Profile `postgres`. In production, prefer a managed Postgres with pgvector (RDS,
+  # Neon, ...): skip this and set DATABASE_URL.
+  postgres:
+    profiles: [postgres]
+    image: pgvector/pgvector:0.8.2-pg18
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      # Required, but no `:?` check: Compose evaluates that even when this profile is off.
+      # Postgres won't initialize without a password.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    # Postgres defaults are laptop-sized. maintenance_work_mem caps memory for HNSW index
+    # builds. Set all three to fit the host or container limit.
+    command: >
+      postgres
+      -c shared_buffers=${PG_SHARED_BUFFERS:-1GB}
+      -c effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-3GB}
+      -c maintenance_work_mem=${PG_MAINTENANCE_WORK_MEM:-512MB}
+    volumes:
+      # pg18 images store data in a versioned subdirectory: mount the parent.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Profile `tei`. Self-hosted embeddings, instead of a hosted provider. Serves one model,
+  # set at startup. The image tag is pinned so a `pull` can't change embeddings under an
+  # existing index.
+  tei:
+    profiles: [tei]
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+    restart: unless-stopped
+    logging: *default-logging
+    # --max-client-batch-size: pg_vectorize sends up to 2048 inputs per request; TEI's
+    #   default is 32.
+    # --max-concurrent-requests: TEI counts inputs, not requests, and returns 429 past
+    #   this. The default of 512 is less than one full batch.
+    # --payload-limit: max request body in bytes. The 2 MB default is too small for a
+    #   full batch of real documents.
+    # --auto-truncate: truncate inputs over the model's max length instead of failing
+    #   the whole batch on one long row.
+    command: >
+      --model-id ${EMBEDDING_MODEL:-BAAI/bge-base-en-v1.5}
+      --port 3000
+      --max-client-batch-size 2048
+      --max-concurrent-requests 4096
+      --payload-limit 50000000
+      --auto-truncate
+    volumes:
+      - tei-cache:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # first start downloads the model
+      start_period: 120s
+
+  # API only; the worker is a separate service (VECTORIZE_WORKER_ENABLED=false). Scale
+  # this for search traffic. It has no authentication and allows any CORS origin: keep it
+  # on a private network or behind an authenticating reverse proxy.
+  server:
+    <<: *vectorize-service
+    environment:
+      <<: *vectorize-env
+      NUM_SERVER_WORKERS: ${NUM_SERVER_WORKERS:-8}
+      # Unset: 2 * NUM_SERVER_WORKERS + 2.
+      DATABASE_POOL_MAX:
+      VECTORIZE_WORKER_ENABLED: "false"
+    command: vectorize-server
+    ports:
+      # Loopback only. Put a TLS-terminating reverse proxy in front.
+      - 127.0.0.1:${SERVER_PORT:-8080}:8080
+    healthcheck:
+      # No curl in the image: request /health over bash's /dev/tcp and require a 200.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080; printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r line <&3; [[ $$line == *' 200 '* ]]"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Embeds queued rows. Same image as the server, different binary. Scale with
+  # `docker compose up -d --scale worker=N`; each replica holds 5 Postgres connections.
+  # /health on WORKER_HEALTH_PORT (8081, not published) returns 503 while the worker
+  # can't read the queue or embed a job.
+  worker:
+    <<: *vectorize-service
+    command: vectorize-worker
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8081; printf 'GET /health HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; read -r line <&3; [[ $$line == *' 200 '* ]]"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  pgdata:
+  tei-cache:

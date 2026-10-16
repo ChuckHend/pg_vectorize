@@ -4,33 +4,24 @@ use serde_json::json;
 use std::time::SystemTime;
 
 pub async fn health_check(app_state: web::Data<AppState>) -> Result<HttpResponse> {
-    let health = app_state.worker_health.read().await;
-    let is_healthy = match &health.status {
-        vectorize_worker::WorkerStatus::Healthy => true,
-        vectorize_worker::WorkerStatus::Starting => {
-            health
-                .last_heartbeat
-                .elapsed()
+    // with the in-process worker off there is nothing to monitor here
+    if !app_state.config.worker_enabled {
+        return Ok(HttpResponse::Ok().json(json!({
+            "status": "healthy",
+            "worker": { "status": "Disabled" },
+            "timestamp": SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs()
-                < 120
-        }
-        _ => false,
-    };
+        })));
+    }
+
+    let health = app_state.worker_health.read().await;
+    let is_healthy = health.is_up();
 
     let response = json!({
         "status": if is_healthy { "healthy" } else { "unhealthy" },
-        "worker": {
-            "status": format!("{:?}", health.status),
-            "last_heartbeat": health.last_heartbeat
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-            "jobs_processed": health.jobs_processed,
-            "uptime_seconds": health.uptime.as_secs(),
-            "restart_count": health.restart_count,
-            "last_error": health.last_error
-        },
+        "worker": health.report(),
         "timestamp": SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
@@ -55,6 +46,17 @@ pub async fn liveness_check() -> Result<HttpResponse> {
 }
 
 pub async fn readiness_check(app_state: web::Data<AppState>) -> Result<HttpResponse> {
+    if !app_state.config.worker_enabled {
+        return Ok(HttpResponse::Ok().json(json!({
+            "status": "ready",
+            "worker_status": "Disabled",
+            "timestamp": SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+        })));
+    }
+
     let health = app_state.worker_health.read().await;
     let is_ready = matches!(health.status, vectorize_worker::WorkerStatus::Healthy);
 

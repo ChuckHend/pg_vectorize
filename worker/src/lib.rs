@@ -73,12 +73,14 @@ async fn start_vectorize_worker_inner(
             Ok(Some(_)) => {
                 info!("processed job!");
                 health_monitor.job_processed().await;
+                health_monitor.recover().await;
             }
             Ok(None) => {
                 debug!(
                     "No messages in queue, waiting for {} seconds",
                     cfg.poll_interval
                 );
+                health_monitor.recover().await;
                 tokio::time::sleep(tokio::time::Duration::from_secs(cfg.poll_interval)).await;
             }
             Err(e) => {

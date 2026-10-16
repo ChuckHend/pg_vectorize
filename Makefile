@@ -5,4 +5,4 @@ compose-server-up:
 
 docs:
 	uv sync
-	uv run mkdocs serve
+	uv run zensical serve

@@ -11,12 +11,14 @@ on:
       - main
     paths:
       - ".github/workflows/extension_ci.yml"
+      - ".github/actions/pgx-init/**"
       - "extension/**"
   push:
     branches:
       - main
     paths:
       - ".github/workflows/extension_ci.yml"
+      - ".github/actions/pgx-init/**"
       - "extension/**"
 jobs:
   lint:
@@ -77,7 +79,10 @@ jobs:
           echo "\q" | make run
           make test-unit
       - name: integration-test
-        if: github.repository_owner == 'ChuckHend'
+        if: >-
+          github.repository_owner == 'ChuckHend' &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository)
         env:
           HF_API_KEY: ${{ secrets.HF_API_KEY }}
           CO_API_KEY: ${{ secrets.CO_API_KEY }}

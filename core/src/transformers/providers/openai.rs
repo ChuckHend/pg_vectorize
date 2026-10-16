@@ -1,4 +1,3 @@
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -6,7 +5,7 @@ use super::{
     GenericEmbeddingResponse,
 };
 use crate::errors::VectorizeError;
-use crate::transformers::http_handler::handle_response;
+use crate::transformers::http_handler::{HTTP_CLIENT, handle_response};
 use crate::transformers::providers;
 use crate::transformers::types::Inputs;
 use async_trait::async_trait;
@@ -59,17 +58,20 @@ impl OpenAIProvider {
     pub fn new(url: Option<String>, api_key: Option<String>) -> Result<Self, VectorizeError> {
         let final_url = match url {
             Some(url) => url,
-            None => OPENAI_BASE_URL.to_string(),
+            // point at an OpenAI-compatible gateway or proxy; unset or empty means OpenAI
+            None => env::var("OPENAI_BASE_URL")
+                .ok()
+                .filter(|u| !u.is_empty())
+                .unwrap_or_else(|| OPENAI_BASE_URL.to_string()),
         };
         let final_api_key = match api_key {
             Some(api_key) => api_key,
-            None => match env::var("OPENAI_API_KEY") {
-                Ok(key) => key,
-                Err(e) => {
-                    log::error!("OPENAI_API_KEY environment variable is not set");
-                    Err(e)?
-                }
-            },
+            None => {
+                env::var("OPENAI_API_KEY").map_err(|_| VectorizeError::ProviderNotConfigured {
+                    provider: "openai".to_string(),
+                    env_var: "OPENAI_API_KEY".to_string(),
+                })?
+            }
         };
         Ok(OpenAIProvider {
             url: final_url,
@@ -84,7 +86,6 @@ impl EmbeddingProvider for OpenAIProvider {
         &self,
         request: &'a GenericEmbeddingRequest,
     ) -> Result<GenericEmbeddingResponse, VectorizeError> {
-        let client = Client::new();
         let req = OpenAIEmbeddingBody::from(request.clone());
         let num_inputs = request.input.len();
         let todo_requests: Vec<OpenAIEmbeddingBody> = if num_inputs > 2048 {
@@ -104,9 +105,9 @@ impl EmbeddingProvider for OpenAIProvider {
         for request_payload in todo_requests.iter() {
             let payload_val = serde_json::to_value(request_payload)?;
             let embeddings_url = format!("{}/embeddings", self.url);
-            let response = client
+            let response = HTTP_CLIENT
                 .post(&embeddings_url)
-                .timeout(std::time::Duration::from_secs(120_u64))
+                .timeout(crate::config::embedding_request_timeout())
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
                 .header("Authorization", format!("Bearer {}", self.api_key))
@@ -124,7 +125,22 @@ impl EmbeddingProvider for OpenAIProvider {
     }
 
     async fn model_dim(&self, model_name: &str) -> Result<u32, VectorizeError> {
-        Ok(openai_embedding_dim(model_name) as u32)
+        if self.url == OPENAI_BASE_URL {
+            return Ok(openai_embedding_dim(model_name) as u32);
+        }
+        // a custom base URL can serve any model, so the table above does not apply:
+        // determine embedding dim by generating an embedding and getting length of array
+        let req = GenericEmbeddingRequest {
+            input: vec!["hello world".to_string()],
+            model: model_name.to_string(),
+        };
+        let embedding = self.generate_embedding(&req).await?;
+        let first = embedding.embeddings.first().ok_or_else(|| {
+            VectorizeError::EmbeddingGenerationFailed(
+                "embedding response contained no embeddings".to_string(),
+            )
+        })?;
+        Ok(first.len() as u32)
     }
 }
 
@@ -143,13 +159,12 @@ impl OpenAIProvider {
         model_name: String,
         messages: &[ChatMessageRequest],
     ) -> Result<String, VectorizeError> {
-        let client = Client::new();
         let chat_url = format!("{}/chat/completions", self.url);
         let message = serde_json::json!({
             "model": model_name,
             "messages": messages,
         });
-        let response = client
+        let response = HTTP_CLIENT
             .post(&chat_url)
             .timeout(std::time::Duration::from_secs(120_u64))
             .header("Accept", "application/json")

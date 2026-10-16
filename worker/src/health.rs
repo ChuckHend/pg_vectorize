@@ -34,6 +34,35 @@ impl Default for WorkerHealth {
     }
 }
 
+impl WorkerHealth {
+    /// Whether a health endpoint should answer 200. A busy worker does not heartbeat
+    /// while it waits on a slow embedding batch, so `Healthy` is not aged out here.
+    pub fn is_up(&self) -> bool {
+        match &self.status {
+            WorkerStatus::Healthy => true,
+            WorkerStatus::Starting => {
+                self.last_heartbeat.elapsed().unwrap_or_default().as_secs() < 120
+            }
+            _ => false,
+        }
+    }
+
+    /// The `worker` object of a health response.
+    pub fn report(&self) -> serde_json::Value {
+        serde_json::json!({
+            "status": format!("{:?}", self.status),
+            "last_heartbeat": self.last_heartbeat
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            "jobs_processed": self.jobs_processed,
+            "uptime_seconds": self.uptime.as_secs(),
+            "restart_count": self.restart_count,
+            "last_error": self.last_error
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WorkerHealthMonitor {
     health: Arc<RwLock<WorkerHealth>>,
@@ -48,8 +77,14 @@ impl Default for WorkerHealthMonitor {
 
 impl WorkerHealthMonitor {
     pub fn new() -> Self {
+        Self::with_shared_health(Arc::new(RwLock::new(WorkerHealth::default())))
+    }
+
+    /// Monitor that updates an existing health object, so another component (e.g. the
+    /// server's /health route) can read what the worker reports.
+    pub fn with_shared_health(health: Arc<RwLock<WorkerHealth>>) -> Self {
         Self {
-            health: Arc::new(RwLock::new(WorkerHealth::default())),
+            health,
             start_time: SystemTime::now(),
         }
     }
@@ -82,6 +117,14 @@ impl WorkerHealthMonitor {
         health.uptime = self.start_time.elapsed().unwrap_or_default();
     }
 
+    /// Clear a transient `Error` status after a successful poll. Other statuses are left alone.
+    pub async fn recover(&self) {
+        let mut health = self.health.write().await;
+        if matches!(health.status, WorkerStatus::Error(_)) {
+            health.status = WorkerStatus::Healthy;
+        }
+    }
+
     pub async fn increment_restart(&self) {
         let mut health = self.health.write().await;
         health.restart_count += 1;
@@ -108,5 +151,63 @@ impl WorkerHealthMonitor {
 
     pub fn get_arc_clone(&self) -> Arc<RwLock<WorkerHealth>> {
         Arc::clone(&self.health)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn shared_health_is_visible_to_reader() {
+        let shared = Arc::new(RwLock::new(WorkerHealth::default()));
+        let monitor = WorkerHealthMonitor::with_shared_health(shared.clone());
+
+        monitor.set_status(WorkerStatus::Healthy).await;
+        monitor.job_processed().await;
+
+        let health = shared.read().await;
+        assert!(matches!(health.status, WorkerStatus::Healthy));
+        assert_eq!(health.jobs_processed, 1);
+    }
+
+    #[test]
+    fn is_up_by_status() {
+        let mut health = WorkerHealth::default();
+        assert!(health.is_up());
+
+        health.last_heartbeat = SystemTime::now() - Duration::from_secs(121);
+        assert!(!health.is_up(), "stuck in Starting");
+
+        health.status = WorkerStatus::Healthy;
+        assert!(
+            health.is_up(),
+            "Healthy is not aged out during a long batch"
+        );
+
+        health.status = WorkerStatus::Error("boom".to_string());
+        assert!(!health.is_up());
+
+        health.status = WorkerStatus::Dead;
+        assert!(!health.is_up());
+    }
+
+    #[tokio::test]
+    async fn recover_clears_error_only() {
+        let monitor = WorkerHealthMonitor::new();
+
+        monitor.set_error("boom".to_string()).await;
+        monitor.recover().await;
+        assert!(matches!(
+            monitor.get_health().await.status,
+            WorkerStatus::Healthy
+        ));
+
+        monitor.set_status(WorkerStatus::Dead).await;
+        monitor.recover().await;
+        assert!(matches!(
+            monitor.get_health().await.status,
+            WorkerStatus::Dead
+        ));
     }
 }

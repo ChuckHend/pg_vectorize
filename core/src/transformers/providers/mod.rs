@@ -66,7 +66,7 @@ pub fn get_provider(
             url,
             api_key,
             virtual_key,
-        ))),
+        )?)),
         ModelSource::Voyage => Ok(Box::new(providers::voyage::VoyageProvider::new(
             url, api_key,
         )?)),

@@ -33,8 +33,12 @@ services:
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       EMBEDDING_SVC_URL: ${EMBEDDING_SVC_URL:-http://vector-serve:3000/v1}
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/postgres}
+      NUM_SERVER_WORKERS: ${NUM_SERVER_WORKERS:-8}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-18}
       RUST_LOG: debug
     command: vectorize-server
+  # For production you likely want TEI or a hosted embedding provider (OpenAI, Voyage,
+  # Cohere, ...) instead of vector-serve: see deploy/docker-compose.yml and docs/production.md.
   vector-serve:
     restart: always
     logging: *default-logging

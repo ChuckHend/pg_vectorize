@@ -1,9 +1,32 @@
-use tracing::{debug, error, info};
+use actix_web::{App, HttpResponse, HttpServer, web};
+use serde_json::json;
+use std::time::SystemTime;
+use tracing::{error, info};
 use vectorize_core::config::Config;
 use vectorize_core::init;
-use vectorize_worker::executor::poll_job;
+use vectorize_worker::{WorkerHealthMonitor, start_vectorize_worker_with_monitoring};
 
-#[tokio::main]
+async fn health(monitor: web::Data<WorkerHealthMonitor>) -> HttpResponse {
+    let health = monitor.get_health().await;
+    let is_up = health.is_up();
+
+    let response = json!({
+        "status": if is_up { "healthy" } else { "unhealthy" },
+        "worker": health.report(),
+        "timestamp": SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    });
+
+    if is_up {
+        HttpResponse::Ok().json(response)
+    } else {
+        HttpResponse::ServiceUnavailable().json(response)
+    }
+}
+
+#[actix_web::main]
 async fn main() {
     tracing_subscriber::fmt().with_target(false).init();
 
@@ -25,27 +48,31 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
-    let queue = pgmq::PGMQueueExt::new_with_pool(pool.clone()).await;
+    let monitor = WorkerHealthMonitor::new();
 
-    loop {
-        match poll_job(&pool, &queue, &cfg).await {
-            Ok(Some(_)) => {
-                info!("processed job!");
-                // continue processing
-            }
-            Ok(None) => {
-                // no messages, small wait
-                debug!(
-                    "No messages in queue, waiting for {} seconds",
-                    cfg.poll_interval
-                );
-                tokio::time::sleep(tokio::time::Duration::from_secs(cfg.poll_interval)).await;
-            }
-            Err(e) => {
-                // error, long wait
-                error!("Error processing job: {e:?}");
-                tokio::time::sleep(tokio::time::Duration::from_secs(cfg.poll_interval)).await;
-            }
+    let worker = tokio::spawn(start_vectorize_worker_with_monitoring(
+        cfg.clone(),
+        pool,
+        monitor.clone(),
+    ));
+
+    let health_server = HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(monitor.clone()))
+            .route("/health", web::get().to(health))
+    })
+    .workers(1)
+    .bind(("0.0.0.0", cfg.worker_health_port))
+    .expect("Failed to bind health server")
+    .run();
+
+    // exit when either stops (a signal stops the health server; the worker returns only
+    // after giving up on restarts) so the container restarts instead of idling
+    tokio::select! {
+        _ = health_server => info!("shutting down"),
+        res = worker => {
+            error!("worker stopped: {res:?}");
+            std::process::exit(1);
         }
     }
 }

@@ -1,9 +1,8 @@
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
 use super::{EmbeddingProvider, GenericEmbeddingRequest, GenericEmbeddingResponse};
 use crate::errors::VectorizeError;
-use crate::transformers::http_handler::handle_response;
+use crate::transformers::http_handler::{HTTP_CLIENT, handle_response};
 use async_trait::async_trait;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
@@ -57,13 +56,10 @@ impl CohereProvider {
         };
         let final_api_key = match api_key {
             Some(api_key) => api_key,
-            None => match env::var("CO_API_KEY") {
-                Ok(key) => key,
-                Err(e) => {
-                    log::error!("CO_API_KEY environment variable not set.");
-                    Err(e)?
-                }
-            },
+            None => env::var("CO_API_KEY").map_err(|_| VectorizeError::ProviderNotConfigured {
+                provider: "cohere".to_string(),
+                env_var: "CO_API_KEY".to_string(),
+            })?,
         };
         Ok(CohereProvider {
             url: final_url,
@@ -78,14 +74,12 @@ impl EmbeddingProvider for CohereProvider {
         &self,
         request: &'a GenericEmbeddingRequest,
     ) -> Result<GenericEmbeddingResponse, VectorizeError> {
-        let client = Client::new();
-
         let payload = CohereEmbeddingBody::from(request.clone());
         let payload_val = serde_json::to_value(payload)?;
         let embeddings_url = format!("{}/embed", self.url);
-        let response = client
+        let response = HTTP_CLIENT
             .post(&embeddings_url)
-            .timeout(std::time::Duration::from_secs(120_u64))
+            .timeout(crate::config::embedding_request_timeout())
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", self.api_key))

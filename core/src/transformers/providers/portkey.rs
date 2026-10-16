@@ -1,11 +1,9 @@
-use reqwest::Client;
-
 use super::{
     ChatMessageRequest, ChatResponse, EmbeddingProvider, GenericEmbeddingRequest,
     GenericEmbeddingResponse,
 };
 use crate::errors::VectorizeError;
-use crate::transformers::http_handler::handle_response;
+use crate::transformers::http_handler::{HTTP_CLIENT, handle_response};
 use crate::transformers::providers;
 use crate::transformers::providers::openai;
 use async_trait::async_trait;
@@ -21,24 +19,38 @@ pub struct PortkeyProvider {
 }
 
 impl PortkeyProvider {
-    pub fn new(url: Option<String>, api_key: Option<String>, virtual_key: Option<String>) -> Self {
+    pub fn new(
+        url: Option<String>,
+        api_key: Option<String>,
+        virtual_key: Option<String>,
+    ) -> Result<Self, VectorizeError> {
         let final_url = match url {
             Some(url) => url,
             None => PORTKEY_BASE_URL.to_string(),
         };
         let final_api_key = match api_key {
             Some(api_key) => api_key,
-            None => env::var("PORTKEY_API_KEY").expect("PORTKEY_API_KEY not set"),
+            None => {
+                env::var("PORTKEY_API_KEY").map_err(|_| VectorizeError::ProviderNotConfigured {
+                    provider: "portkey".to_string(),
+                    env_var: "PORTKEY_API_KEY".to_string(),
+                })?
+            }
         };
         let final_virtual_key = match virtual_key {
             Some(vkey) => vkey,
-            None => env::var("PORTKEY_VIRTUAL_KEY").expect("PORTKEY_VIRTUAL_KEY not set"),
+            None => env::var("PORTKEY_VIRTUAL_KEY").map_err(|_| {
+                VectorizeError::ProviderNotConfigured {
+                    provider: "portkey".to_string(),
+                    env_var: "PORTKEY_VIRTUAL_KEY".to_string(),
+                }
+            })?,
         };
-        PortkeyProvider {
+        Ok(PortkeyProvider {
             url: final_url,
             api_key: final_api_key,
             virtual_key: final_virtual_key,
-        }
+        })
     }
 }
 
@@ -48,8 +60,6 @@ impl EmbeddingProvider for PortkeyProvider {
         &self,
         request: &'a GenericEmbeddingRequest,
     ) -> Result<GenericEmbeddingResponse, VectorizeError> {
-        let client = Client::new();
-
         let req = openai::OpenAIEmbeddingBody::from(request.clone());
         let num_inputs = request.input.len();
         let todo_requests: Vec<openai::OpenAIEmbeddingBody> = if num_inputs > 2048 {
@@ -68,9 +78,9 @@ impl EmbeddingProvider for PortkeyProvider {
         let mut all_embeddings: Vec<Vec<f64>> = Vec::with_capacity(num_inputs);
         for request_payload in todo_requests.iter() {
             let payload_val = serde_json::to_value(request_payload)?;
-            let response = client
+            let response = HTTP_CLIENT
                 .post(&embeddings_url)
-                .timeout(std::time::Duration::from_secs(120_u64))
+                .timeout(crate::config::embedding_request_timeout())
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
                 .header("x-portkey-virtual-key", self.virtual_key.clone())
@@ -106,13 +116,12 @@ impl PortkeyProvider {
         model_name: String,
         messages: &[ChatMessageRequest],
     ) -> Result<String, VectorizeError> {
-        let client = Client::new();
         let message = serde_json::json!({
             "model": model_name,
             "messages": messages,
         });
         let chat_url = format!("{}/chat/completions", self.url);
-        let response = client
+        let response = HTTP_CLIENT
             .post(&chat_url)
             .timeout(std::time::Duration::from_secs(120_u64))
             .header("Accept", "application/json")
@@ -138,7 +147,8 @@ mod portkey_integration_tests {
         let portkey_api_key = env::var("PORTKEY_API_KEY").expect("PORTKEY_API_KEY not set");
         let portkey_virtual_key =
             env::var("PORTKEY_VIRTUAL_KEY_OPENAI").expect("PORTKEY_VIRTUAL_KEY_OPENAI not set");
-        let provider = PortkeyProvider::new(None, Some(portkey_api_key), Some(portkey_virtual_key));
+        let provider =
+            PortkeyProvider::new(None, Some(portkey_api_key), Some(portkey_virtual_key)).unwrap();
         let request = GenericEmbeddingRequest {
             model: "text-embedding-ada-002".to_string(),
             input: vec!["hello world".to_string()],

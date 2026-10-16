@@ -319,4 +319,4 @@ The embeddings must match the dimensions of the specified transformer model. Thi
 
 ## Contributing
 
-We welcome contributions from the community! If you're interested in contributing to `pg_vectorize`, please check out our [Contributing Guide](CONTRIBUTING.md). You can also open an issue.
+We welcome contributions from the community! If you're interested in contributing to `pg_vectorize`, please check out our [Contributing Guide](../CONTRIBUTING.md). You can also open an issue.

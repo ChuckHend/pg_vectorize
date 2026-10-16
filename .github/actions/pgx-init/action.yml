@@ -4,6 +4,10 @@ inputs:
   working-directory:
     description: 'The directory in which there is a pgrx extension project'
     required: true
+  pg-version:
+    description: 'PostgreSQL feature to initialize; defaults to the extension default'
+    required: false
+    default: ''
 outputs: {}
 runs:
   using: "composite"
@@ -34,14 +38,14 @@ runs:
         shell: bash
         if: steps.pgrx_install.outputs.skip == 'false'
         working-directory: ${{ inputs.working-directory }}
+        env:
+          PG_VERSION: ${{ inputs.pg-version }}
         run: |
           set -x
-          pg_version=$(stoml Cargo.toml features.default)
-          # pgrx init can take a long time, and it re-compiles postgres even when there
-          # is a cached version. So, we can just check for the directory and
-          cat /home/runner/.pgrx/config.toml || true
-          if find /home/runner/.pgrx | grep $(awk -F "=" '/${pg_version}/ {print $2}' /home/runner/.pgrx/config.toml | tr -d '"'); then
+          pg_version=${PG_VERSION:-$(stoml Cargo.toml features.default)}
+          # Reuse the requested PostgreSQL installation when it is cached.
+          if pg_config=$(cargo pgrx info pg-config "$pg_version") && [ -x "$pg_config" ]; then
             echo "Already found pgrx is initialized. Skipping 'cargo pgrx init' command."
           else
-            cargo pgrx init --${pg_version} download || true
+            cargo pgrx init --${pg_version} download
           fi
