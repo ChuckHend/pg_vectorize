@@ -1,0 +1,23 @@
+/* Deep water palette: navy header, seafoam links.
+   Selectors include [data-md-color-primary] so these colours still win when a
+   visitor's browser restores an older saved palette (e.g. the previous teal). */
+[data-md-color-primary] {
+  --md-primary-fg-color:        #0A2540;
+  --md-primary-fg-color--light: #0A2540;
+  --md-primary-fg-color--dark:  #0A2540;
+  --md-primary-bg-color:        #71EEB8;
+  --md-primary-bg-color--light: #71EEB8B3;
+}
+
+[data-md-color-scheme="slate"][data-md-color-primary] {
+  --md-hue: 222;
+  --md-typeset-a-color: #71EEB8;
+  --md-accent-fg-color: #6CB8F0;
+  --md-accent-fg-color--transparent: #6CB8F01A;
+}
+
+[data-md-color-scheme="default"][data-md-color-primary] {
+  --md-typeset-a-color: #147A5C;
+  --md-accent-fg-color: #1C6FB5;
+  --md-accent-fg-color--transparent: #1C6FB51A;
+}
