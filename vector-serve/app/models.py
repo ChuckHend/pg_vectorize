@@ -1,10 +1,12 @@
-import os
 import logging
+import os
 
 from fastapi import FastAPI, HTTPException
 from sentence_transformers import SentenceTransformer
 
 from app.metrics import ML_MODEL_COUNT
+
+logger = logging.getLogger(__name__)
 
 LOCAL_FILES_ONLY = os.getenv("LOCAL_FILES_ONLY", "true").lower() in [
     "true",
@@ -20,9 +22,9 @@ MODELS_TO_CACHE = [f"{_HF_ORG}/all-MiniLM-L6-v2"]
 cache_dir = "./models"
 
 try:
-    MULTI_MODEL = int(os.getenv("MULTI_MODEL", 1))
+    MULTI_MODEL = int(os.getenv("MULTI_MODEL", "1"))
 except Exception:
-    logging.exception("Failed to parse MULTI_MODEL env var")
+    logger.exception("Failed to parse MULTI_MODEL env var")
     MULTI_MODEL = 1
 
 
@@ -49,7 +51,7 @@ def load_model_cache(app: FastAPI) -> dict[str, SentenceTransformer]:
 def save_model_cache() -> None:
     """caches models to local storage"""
     for mod in MODELS_TO_CACHE:
-        logging.debug(f"Caching model: {mod}")
+        logger.debug(f"Caching model: {mod}")
         SentenceTransformer(mod, cache_folder=cache_dir)
 
 
@@ -62,7 +64,7 @@ def model_org_name(model_name: str) -> str:
 
 
 def get_model(
-    model_name: str, model_cache: dict[str, SentenceTransformer], api_key: str = None
+    model_name: str, model_cache: dict[str, SentenceTransformer], api_key: str | None = None
 ) -> SentenceTransformer:
     model = model_cache.get(model_name)
     if model is None:
@@ -73,7 +75,7 @@ def get_model(
             )
         # try to download from HF when MULTI_MODEL enabled
         # and model not in cache
-        logging.debug(f"Model: {model_name} not in cache.")
+        logger.debug(f"Model: {model_name} not in cache.")
         # fall back to env var for Hugging Face API key, if it exists
         token = os.getenv("HF_API_KEY") or api_key
         try:
@@ -82,11 +84,11 @@ def get_model(
             )
             # add model to cache
             model_cache[model_name] = model
-            logging.debug(f"Added model: {model_name} to cache.")
+            logger.debug(f"Added model: {model_name} to cache.")
         except Exception:
             if api_key is None:
-                logging.warning("No api_key provided for model: %s", model_name)
-            logging.exception("Failed to load model %s", model_name)
+                logger.warning("No api_key provided for model: %s", model_name)
+            logger.exception("Failed to load model %s", model_name)
             raise
     ML_MODEL_COUNT.labels(model_name=model_name).inc()
     return model
