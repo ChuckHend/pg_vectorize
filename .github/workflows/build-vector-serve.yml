@@ -152,24 +152,16 @@ jobs:
 
       - name: Create and push Docker manifest -- Commit
         run: |
-          docker manifest create \
-            ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }} \
+          docker buildx imagetools create \
+            -t ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }} \
             ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-arm64 \
             ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-amd64
-
-          docker manifest annotate ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }} ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-arm64 --arch arm64 --os linux
-          docker manifest annotate ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }} ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}-amd64 --arch amd64 --os linux
-          docker manifest push ghcr.io/chuckhend/vector-serve:${{ steps.versions.outputs.SHORT_SHA }}
 
       - name: Create and push Docker manifest -- latest (main)
         # only push latest off main
         if: github.ref == 'refs/heads/main'
         run: |
-          docker manifest create \
-            ghcr.io/chuckhend/vector-serve:latest \
+          docker buildx imagetools create \
+            -t ghcr.io/chuckhend/vector-serve:latest \
             ghcr.io/chuckhend/vector-serve:latest-arm64 \
             ghcr.io/chuckhend/vector-serve:latest-amd64
-        
-          docker manifest annotate ghcr.io/chuckhend/vector-serve:latest ghcr.io/chuckhend/vector-serve:latest-arm64 --arch arm64 --os linux
-          docker manifest annotate ghcr.io/chuckhend/vector-serve:latest ghcr.io/chuckhend/vector-serve:latest-amd64 --arch amd64 --os linux
-          docker manifest push ghcr.io/chuckhend/vector-serve:latest
