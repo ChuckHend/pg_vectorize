@@ -1,7 +1,7 @@
 from app.threading_config import THREADS_PER_WORKER  # noqa: I001 -- must precede any torch/tokenizers import
 
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 import logging
 
 import torch
@@ -18,13 +18,14 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 
 logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 torch.set_num_threads(THREADS_PER_WORKER)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    logging.info("Running app start handler.")
+    logger.info("Running app start handler.")
     load_model_cache(app)
     yield
 
