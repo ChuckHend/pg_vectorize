@@ -1,6 +1,9 @@
+import logging
+
 from fastapi import APIRouter
 from pydantic import BaseModel
-import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
 
@@ -15,7 +18,7 @@ class AliveResponse(BaseModel):
 
 @router.get("/ready", response_model=ReadyResponse)
 def ready() -> ReadyResponse:
-    logging.debug("Health check")
+    logger.debug("Health check")
     return ReadyResponse(
         ready=True,
     )
@@ -23,7 +26,7 @@ def ready() -> ReadyResponse:
 
 @router.get("/alive", response_model=AliveResponse)
 def alive() -> AliveResponse:
-    logging.debug("Health check")
+    logger.debug("Health check")
     return AliveResponse(
         alive=True,
     )
