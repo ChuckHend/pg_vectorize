@@ -11,7 +11,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 2. Install [pgrx](https://github.com/pgcentralfoundation/pgrx)
 
 ```bash
-cargo install cargo-pgrx --version 0.16.1 --locked
+cargo install cargo-pgrx --version 0.20.1 --locked
 
 cargo pgrx init --pg18 $(which pg_config)
 ```
