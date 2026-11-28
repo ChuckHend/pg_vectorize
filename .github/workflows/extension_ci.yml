@@ -47,7 +47,8 @@ jobs:
 
   test:
     name: Run tests
-    runs-on: ubuntu-latest
+    # The vectorscale test dependency uses pgrx 0.16.1 to generate PG18 bindings.
+    runs-on: ubuntu-24.04
     services:
       # Label used to access the service container
       vector-serve:
@@ -60,8 +61,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            vectorize
+          workspaces: extension
           # Additional directories to cache
           cache-directories: |
             /home/runner/.pgrx
